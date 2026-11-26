@@ -50,11 +50,98 @@ def request_json(url):
             )
             with urllib.request.urlopen(req, timeout=25) as response:
                 return json.load(response)
-        except (urllib.error.HTTPError, urllib.error.URLError, TimeoutError, ValueError) as exc:
-            last = exc
+        except urllib.error.HTTPError as exc:
+            # Expose error response because a 422 often means invalid cursor fields.
+            body = exc.read(480).decode("utf-8", "replace")
+            if exc.code in (400, 404, 422):
+                raise RuntimeError("HTTP %s %s" % (exc.code, body[:240])) from exc
+            last = "HTTP %s %s" % (exc.code, body[:150])
+            if attempt < 2:
+                time.sleep(1 + attempt)
+        except (urllib.error.URLError, TimeoutError, ValueError) as exc:
+            last = str(exc)
             if attempt < 2:
                 time.sleep(1 + attempt)
     raise RuntimeError(str(last))
+
+
+def clean_cursor(cursor):
+    # urlencode(None) produces literal "None": invalid for Blockscout integer cursors.
+    return {key: value for key, value in cursor.items() if value is not None}
+
+
+def get_page(controller, endpoint, cursor):
+    fixed = {"filter": "to"} if endpoint == "transactions" else {}
+    attempts = [clean_cursor(cursor)]
+    if cursor:
+        # Blockscout's pagination cursors vary by endpoint; retry conservative
+        # alternatives rather than stopping on the first 422.
+        attempts.extend([
+            {k: v for k, v in clean_cursor(cursor).items()
+             if k != "items_count"},
+            {k: v for k, v in clean_cursor(cursor).items()
+             if k not in ("items_count", "index")},
+        ])
+    tried = set()
+    errors = []
+    for attempt in attempts:
+        query = {**fixed, **attempt}
+        url = BASE + "/addresses/" + controller + "/" + endpoint
+        if query:
+            url += "?" + urllib.parse.urlencode(query)
+        if url in tried:
+            continue
+        tried.add(url)
+        try:
+            return request_json(url)
+        except RuntimeError as exc:
+            errors.append(str(exc))
+            print("CURSOR REQUEST FAILED:", str(exc)[:180], flush=True)
+    raise RuntimeError("Pagination alternatives exhausted: " + " | ".join(errors)[-600:])
+
+
+def _walk_trace(root, target):
+    # Blockscout may return either a list of flat Parity traces or a nested
+    # callTracer-like tree. Internal calldata lives in the raw trace, not the
+    # address internal-transactions summary record.
+    stack = [root]
+    inspected = 0
+    while stack and inspected < 250000:
+        node = stack.pop()
+        inspected += 1
+        if isinstance(node, list):
+            stack.extend(reversed(node))
+            continue
+        if not isinstance(node, dict):
+            continue
+        action = node.get("action")
+        options = [node]
+        if isinstance(action, dict):
+            options.append(action)
+        for obj in options:
+            to_addr = address_of(obj.get("to"))
+            raw = raw_input_of(obj)
+            if to_addr == target and raw.startswith(SELECTOR):
+                try:
+                    decoded = parse_swap(raw)
+                except (ValueError, OverflowError) as exc:
+                    decoded = {"decode_error": str(exc)}
+                yield {
+                    "parsed_swap": decoded,
+                    "call_from": address_of(obj.get("from")),
+                    "call_to": to_addr,
+                    "trace_error": node.get("error"),
+                }
+        for key, val in node.items():
+            if key == "action":
+                continue
+            if isinstance(val, (dict, list)):
+                stack.append(val)
+
+
+def get_trace_swaps(tx_hash, target):
+    url = BASE + "/transactions/" + tx_hash + "/raw-trace"
+    return list(_walk_trace(request_json(url), target))
 
 def address_of(value):
     if isinstance(value, str):
@@ -109,37 +196,44 @@ def parse_swap(raw):
     }
 
 def scan(label, controller, endpoint):
-    print("\n---", label, endpoint, "---", flush=True)
+    print("\\n---", label, endpoint, "---", flush=True)
     cursor = {}
     page_count = 0
     scanned = 0
+    calls_to_controller = 0
+    raw_trace_scans = 0
+    raw_trace_errors = 0
     matches = []
     error = None
     exhausted = False
+    seen_cursors = set()
+    looked_up_hashes = set()
+    TRACE_LIMIT = 20  # Protect public indexer against excessive requests.
     for _ in range(PAGE_LIMIT):
-        params = {"filter": "to"} if endpoint == "transactions" else {}
-        params.update(cursor)
-        url = (
-            BASE + "/addresses/" + controller + "/" + endpoint
-            + "?" + urllib.parse.urlencode(params)
-        )
+        cursor_key = json.dumps(cursor, sort_keys=True)
+        if cursor_key in seen_cursors:
+            error = "Repeated pagination cursor"
+            break
+        seen_cursors.add(cursor_key)
+
         try:
-            data = request_json(url)
+            data = get_page(controller, endpoint, cursor)
             items = data.get("items", [])
             if not isinstance(items, list):
                 raise RuntimeError("Invalid items in response")
         except Exception as exc:
-            error = str(exc)[:200]
+            error = str(exc)[:240]
             print("REQUEST INCONCLUSIVE:", error, flush=True)
             break
 
         page_count += 1
         scanned += len(items)
-        print("Page", page_count, "records", len(items), flush=True)
-
+        page_calls = 0
         for tx in items:
             if address_of(tx.get("to")) != controller:
                 continue
+            page_calls += 1
+            calls_to_controller += 1
             raw = raw_input_of(tx)
             method = str(tx.get("method") or "").lower()
             decoded = tx.get("decoded_input")
@@ -147,46 +241,77 @@ def scan(label, controller, endpoint):
                 str(decoded.get("method_call") or "").lower()
                 if isinstance(decoded, dict) else ""
             )
-            is_target = raw.startswith(SELECTOR) or "swapuniswapv4" in (method + decoded_method)
-            if not is_target:
-                continue
 
-            parsed = parse_swap(raw)
-            item = {
-                "contract_version": label,
-                "call_kind": endpoint,
-                "timestamp": tx.get("timestamp"),
-                "block_number": tx.get("block_number"),
-                "transaction_hash": tx.get("hash") or tx.get("transaction_hash"),
-                "from_address": address_of(tx.get("from")),
-                "to_address": address_of(tx.get("to")),
-                "status": tx.get("status"),
-                "method": tx.get("method"),
-                "has_raw_calldata": bool(raw),
-                "parsed_swap": parsed
-            }
-            if item["transaction_hash"]:
-                item["explorer_url"] = "https://eth.blockscout.com/tx/" + item["transaction_hash"]
-            matches.append(item)
-            print("POSSIBLE REAL SWAP:", json.dumps(item, ensure_ascii=False), flush=True)
+            tx_hash = tx.get("hash") or tx.get("transaction_hash")
+            parsed = parse_swap(raw) if raw.startswith(SELECTOR) else None
+            if parsed is not None or "swapuniswapv4" in (method + decoded_method):
+                entry = {
+                    "version": label, "source": endpoint,
+                    "transaction_hash": tx_hash, "block_number": tx.get("block_number"),
+                    "timestamp": tx.get("timestamp"), "method": method,
+                    "parsed_swap": parsed,
+                    "status": tx.get("status"), "verification": "indexed_summary",
+                }
+                matches.append(entry)
+                print("POSSIBLE SWAP BY SUMMARY:", json.dumps(entry), flush=True)
+
+            # For internal calls, the account's internal-transactions endpoint
+            # usually does NOT include calldata. Decode the parent transaction
+            # via Blockscout's raw-trace endpoint when available.
+            if endpoint != "internal-transactions" or not tx_hash:
+                continue
+            if tx_hash in looked_up_hashes or raw_trace_scans >= TRACE_LIMIT:
+                continue
+            looked_up_hashes.add(tx_hash)
+            raw_trace_scans += 1
+            try:
+                for found in get_trace_swaps(tx_hash, controller):
+                    entry = {
+                        "version": label, "source": "raw-trace",
+                        "transaction_hash": tx_hash,
+                        "block_number": tx.get("block_number"),
+                        "timestamp": tx.get("timestamp"),
+                        "parsed_swap": found["parsed_swap"],
+                        "trace_error": found.get("trace_error"),
+                        "verification": "decoded_internal_calldata",
+                        "explorer_url": "https://eth.blockscout.com/tx/" + tx_hash
+                    }
+                    matches.append(entry)
+                    print("DECODED REAL INTERNAL CALL:", json.dumps(entry), flush=True)
+            except Exception as exc:
+                raw_trace_errors += 1
+                if raw_trace_errors <= 3:
+                    print("RAW TRACE INCONCLUSIVE:", tx_hash[:14], str(exc)[:150], flush=True)
+            time.sleep(0.2)
+
+        print(
+            "Page", page_count, "records", len(items),
+            "calls_TO_controller", page_calls,
+            "raw_traces_checked", raw_trace_scans, flush=True
+        )
 
         next_params = data.get("next_page_params")
         if not isinstance(next_params, dict) or not next_params:
             exhausted = True
             break
-        cursor = next_params
-        time.sleep(0.35)
+        cursor = clean_cursor(next_params)
+        print("NEXT CURSOR", json.dumps(cursor, sort_keys=True), flush=True)
+        if not cursor:
+            error = "Empty cursor after sanitization"
+            break
+        time.sleep(0.4)
+
+    if page_count == PAGE_LIMIT and not exhausted and error is None:
+        error = "Page limit reached; history incomplete"
     return {
-        "controller": controller,
-        "endpoint": endpoint,
-        "pages": page_count,
-        "records_scanned": scanned,
-        "is_exhaustive": exhausted,
-        "error": error,
-        "matches": matches,
+        "controller": controller, "endpoint": endpoint,
+        "pages": page_count, "records_scanned": scanned,
+        "calls_to_controller": calls_to_controller,
+        "raw_trace_requests": raw_trace_scans, "raw_trace_errors": raw_trace_errors,
+        "is_exhaustive": exhausted, "error": error, "matches": matches
     }
 
-print("=== PASSO 362: REAL SPARK SWAP HISTORY ===", flush=True)
+print("=== PASSO 363: TRACE-AWARE SPARK SWAP HISTORY ===", flush=True)
 print("Source: Blockscout API v2, readonly", flush=True)
 print("Method selector:", SELECTOR, flush=True)
 
@@ -209,15 +334,15 @@ for run in result["runs"]:
         "pages", run["pages"],
         "records", run["records_scanned"],
         "matches", len(run["matches"]),
-        "complete", run["is_exhaustive"],
+        "calls_to_controller", run["calls_to_controller"],\n        "traces_checked", run["raw_trace_requests"],\n        "complete", run["is_exhaustive"],
         "error", run["error"],
         flush=True
     )
-print("Candidate matching calls", len(result["unique_transactions"]), flush=True)
+print("Potential matching calls", len(result["unique_transactions"]), flush=True)\nprint("CAUTION: internal-trace availability and pagination may be incomplete.", flush=True)
 print("Not finding a call does NOT prove no swaps: pagination and internal indexes can be partial.", flush=True)
 
-with open("audit-output/pass362_swap_history.json", "w") as file:
+with open("audit-output/pass363_swap_history.json", "w") as file:
     json.dump(result, file, ensure_ascii=False, indent=2)
 
-print("Saved audit-output/pass362_swap_history.json", flush=True)
+print("Saved audit-output/pass363_swap_history.json", flush=True)
 print("NO ARCHIVE RPC. NO LIVE TRANSACTIONS. NO KEYS REQUIRED.", flush=True)
