@@ -27,6 +27,13 @@ contract SparkTotalExposure is SparkFundedSwapSandwich {
     address constant STATE_VIEW = 0x7fFE42C4a5DEeA5b0feC41C94C136Cf115597227;
     uint256 constant Q128 = 1 << 128;
 
+    // The free public RPC does not support archive state for arbitrary contracts.
+    // Use one FRESH on-chain snapshot instead of an archived block. All scenarios
+    // are compared at that exact same fork height via vm.snapshotState().
+    function _forkBlockNumber() internal pure override returns (uint256) {
+        return 0;
+    }
+
     struct Exposure {
         uint256 proxyRLUSD;
         uint256 proxyUSDS;
@@ -119,10 +126,11 @@ contract SparkTotalExposure is SparkFundedSwapSandwich {
 
     function testTotalSparkEconomicExposure() public {
         console2.log("=== PASSO 359: REAL SPARK INVENTORY + OWNED LP PRINCIPAL + FEES ===");
-        console2.log("Historic block", block.number);
+        console2.log("LATEST block pinned at fork creation", block.number);
         console2.log("Victim swap: 5 million REAL RLUSD (hypothetical RELAYER order)");
         console2.log("Spark is LP in the same RLUSD/USDS pool.");
         console2.log("All holdings valued at 1 RLUSD = 1 USDS = 1 USD.");
+        console2.log("NOTE: live snapshot may differ from Passo 355 historical NFT holdings.");
 
         Exposure memory beforeState = _getExposure();
         _printExposure("INITIAL EXPOSURE", beforeState);
