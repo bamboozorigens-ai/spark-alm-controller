@@ -2,14 +2,17 @@
 
 ## Resultado
 
-Revisão estática adversarial dos contratos PAS, ValueRegistry, SBEBeam e FarmOwner listados no escopo Immunefi. **Nenhuma falha explorável por usuário não privilegiado, nem caminho confirmado para perda ou congelamento de fundos foi demonstrado nesta rodada.** Não enviar relatório de bounty com base nos pontos abaixo como se fossem vulnerabilidades confirmadas.
+Revisão estática adversarial dos contratos PAS, ValueRegistry, SBEBeam e FarmOwner listados no escopo Immunefi. **Nenhuma falha explorável por usuário não privilegiado, nem caminho confirmado para perda ou congelamento de fundos foi demonstrado nesta revisão.** Não enviar relatório de bounty com base nos pontos abaixo como se fossem vulnerabilidades confirmadas.
+
+Foi feita também uma reprodução separada do fluxo WEETH em fork local. Ela demonstra somente griefing/atraso recuperável; não demonstra roubo, insolvência ou congelamento permanente. A elegibilidade do PAU/WEETH no bounty ainda não foi confirmada.
 
 ## Escopo e fontes
 
 - PAS no commit [947e71cd5dbaaf9c5b3840dd1b23e8e99d9a564d](https://github.com/sky-ecosystem/pas/tree/947e71cd5dbaaf9c5b3840dd1b23e8e99d9a564d): `BeamState.sol`, `Configurator.sol`, `Timelock.sol`, `PASMom.sol`.
 - [ValueRegistry.sol](https://github.com/sky-ecosystem/value-registry/blob/main/src/ValueRegistry.sol).
 - DSS Flappers no commit [5d8215cee7b66591aa2f87023043c868a420fe27](https://github.com/sky-ecosystem/dss-flappers/tree/5d8215cee7b66591aa2f87023043c868a420fe27): `SBEBeam.sol`, `FarmOwner.sol`.
-- A página oficial de escopo lista estes ativos e limita recompensas a impactos expressamente aceitos: [Sky Scope no Immunefi](https://immunefi.com/bug-bounty/sky/scope/).
+- A página oficial de escopo lista os ativos e limita recompensas aos impactos expressamente aceitos: [Sky Scope no Immunefi](https://immunefi.com/bug-bounty/sky/scope/). A página de recursos orienta pesquisadores aos repositórios em [sky-ecosystem](https://github.com/sky-ecosystem) e ao [Chainlog](https://chainlog.sky.money/) para endereços atuais.
+- Para o PAU/WEETH, a página de escopo consultada não expôs os nomes `PAU` ou `WEETH` em seu conteúdo textual. Como os ativos são paginados, ainda é necessário confirmar a lista completa e o deployment exato antes de alegar elegibilidade.
 
 ## Verificações adversariais
 
@@ -28,7 +31,7 @@ Revisão estática adversarial dos contratos PAS, ValueRegistry, SBEBeam e FarmO
 - `owner` e `authority` continuam sendo controles privilegiados; não foi identificada escalada permissionless.
 
 ### ValueRegistry
-- Verifiquei inserção/atualização/remoção, inclusive chave `bytes32(0)), posição trocada pela última chave e remoção repetida numa única chamada. Não encontrei corrupção de índice ou escrita sem `bud`.
+- Verifiquei inserção/atualização/remoção, inclusive chave `bytes32(0)`, posição trocada pela última chave e remoção repetida numa única chamada. Não encontrei corrupção de índice ou escrita sem `bud`.
 - As mutações de valores são restritas a operadores; os fluxos que consumiriam os parâmetros precisam ser analisados no respectivo contrato consumidor para avaliar impacto econômico.
 
 ### SBEBeam e FarmOwner
@@ -36,6 +39,21 @@ Revisão estática adversarial dos contratos PAS, ValueRegistry, SBEBeam e FarmO
 - `FarmOwner` encaminha chamadas de administração do farm somente por wards. `recoverERC20` assume token padrão com retorno/reversão convencional, como indicado no comentário; não há evidência nesta revisão de que token não padrão esteja entre os ativos ativos relevantes.
 - Nenhum caminho de atacante externo para alterar parâmetros do burn stream ou retirar tokens foi confirmado.
 
+### PAU / WEETH — reprodução em fork
+- Foundry 1.10.1 foi instalado; `forge`, `cast` e `anvil` estão disponíveis no ambiente.
+- O teste local usa um fork da Ethereum no bloco `26502658`, contratos EtherFi reais lidos do fork e um WEETHModule novo implantado localmente. Não representa um deployment live do Controller PAU e não prova que um módulo de produção esteja configurado.
+- Um endereço externo consumiu um pedido de saque finalizado de 10 ETH por meio do claim permissionless da NFT. O atacante recebeu 0 ETH; o pagamento foi ao módulo. O claim normal daquele ID falhou por já estar consumido.
+- Um claim posterior válido de 1 ETH pelo módulo transferiu `11.000000000000000001 WETH` ao proxy, incluindo o saldo anterior retido. Isso demonstra atraso/consumo de pedido com recuperação posterior, não perda financeira líquida.
+- Teste: `test/audit/WEETH_PublicClaimAttack.t.sol`, função `test_outsiderConsumesFinalizedRequestButCannotKeepFunds`; resultado: **1 aprovado, 0 falhos**. Nenhuma transação foi enviada à rede ao vivo.
+
+## Validação executada
+
+- `test/unit/rate-limits/RateLimits.t.sol`: **36 aprovados, 0 falhos**, incluindo testes fuzz.
+- `test/integration/Controller.t.sol`: **22 aprovados, 0 falhos**.
+- `test/audit/SiblingControllerReentrancy.t.sol`: **3 aprovados, 0 falhos**; reentrada em Controller irmão continua exigindo `ALLOCATOR_ROLE` nessa instância.
+- Suíte ampla: não compilou devido a um teste legado em `test/mainnet-fork/ForkTestBase.t.sol` chamando `createSelectFork` numa API incompatível de dependência. O erro é do setup de testes e não foi corrigido, para não ampliar alterações de dependência fora do escopo.
+- `test/unit/WEETHModule.t.sol`: 15 aprovados e 2 falhos por divergência entre o seletor de erro customizado da dependência OpenZeppelin e a expectativa textual `InvalidInitialization()`; não é falha no fluxo testado acima.
+
 ## Limitações e próximo passo
 
-Esta rodada foi revisão de código-fonte; não foi executada em fork. O ambiente atual não tem Foundry/Forge disponível, então não há PoC local ou resultado de teste automatizado a alegar. Para continuar com prioridade, confirmar no programa/deployment quais endereços e parâmetros desses ativos estão ativos e então construir simulações locais apenas para hipóteses com caminho de atacante não privilegiado.
+A revisão não encontrou até agora falha nova de alto impacto nos alvos PAS, ValueRegistry, SBEBeam ou FarmOwner. O próximo filtro para maximizar valor de bounty é confirmar os ativos e deployments elegíveis, depois priorizar hipóteses de roubo direto, insolvência ou congelamento permanente com PoC local. O resultado WEETH deve permanecer rotulado como candidato de disponibilidade fora de escopo ou elegibilidade não confirmada, sem ser apresentado como vulnerabilidade crítica.
