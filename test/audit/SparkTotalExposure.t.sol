@@ -24,7 +24,7 @@ interface IExposPosm {
 }
 
 contract SparkTotalExposure is SparkFundedSwapSandwich {
-    address constant STATE_VIEW = 0x7FFE42C4a5DEea5b0Fec41C94C136Cf115597227;
+    address constant STATE_VIEW = 0x7fFE42C4a5DEeA5b0feC41C94C136Cf115597227;
     uint256 constant Q128 = 1 << 128;
 
     struct Exposure {
