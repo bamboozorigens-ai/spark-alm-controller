@@ -1,0 +1,160 @@
+name: Spark ALM - auditoria automatica (read-only)
+
+on:
+  push:
+    branches:
+      - dev
+    paths:
+      - 'test/audit/pass[0-9][0-9][0-9]_*.py'
+      - '.github/workflows/spark-audit.yml'
+  workflow_dispatch:
+    inputs:
+      audit_pass:
+        description: 'Numero do passo (ex.: 388) ou latest'
+        required: true
+        default: 'latest'
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: spark-audit-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  read-only-python-audit:
+    name: Executar passo de auditoria
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      MAINNET_RPC_URL: https://ethereum-rpc.publicnode.com
+      V4_RPC_RETRIES: '2'
+      V4_RPC_TIMEOUT: '24'
+      PYTHONUNBUFFERED: '1'
+
+    steps:
+      - name: Checkout do repositorio
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          submodules: false
+
+      - name: Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Instalar Foundry para cast (leitura)
+        uses: foundry-rs/foundry-toolchain@v1
+        with:
+          version: v1.5.1
+
+      - name: Selecionar passo valido da auditoria
+        id: select
+        shell: bash
+        env:
+          REQUESTED_PASS: ${{ inputs.audit_pass || 'latest' }}
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import os
+          import pathlib
+          import re
+          import sys
+
+          base = pathlib.Path('test/audit')
+          matches = []
+          for item in base.glob('pass[0-9][0-9][0-9]_*.py'):
+              match = re.fullmatch(r'pass([0-9]{3})_[A-Za-z0-9_]+\.py', item.name)
+              if item.is_file() and match:
+                  matches.append((int(match.group(1)), item))
+          if not matches:
+              sys.exit('ERRO: nenhum script de auditoria passNNN_*.py encontrado')
+
+          selection = os.environ.get('REQUESTED_PASS', 'latest').strip()
+          if selection == 'latest':
+              chosen = max(matches, key=lambda t: (t[0], t[1].name))
+          elif re.fullmatch(r'[0-9]{3}', selection):
+              candidates = [entry for entry in matches if entry[0] == int(selection)]
+              if not candidates:
+                  sys.exit('ERRO: passo solicitado nao existe no repositorio: ' + selection)
+              chosen = max(candidates, key=lambda t: t[1].name)
+          else:
+              sys.exit('ERRO: use latest ou um numero de passo com 3 digitos')
+
+          selected_path = chosen[1].as_posix()
+          with open(os.environ['GITHUB_OUTPUT'], 'a', encoding='utf-8') as f:
+              f.write('script=' + selected_path + '\n')
+              f.write('pass_number=' + str(chosen[0]) + '\n')
+          print('Script selecionado:', selected_path)
+          PY
+
+      - name: Validacao estatica de seguranca
+        shell: bash
+        env:
+          AUDIT_SCRIPT: ${{ steps.select.outputs.script }}
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import os
+          import pathlib
+          import re
+          import sys
+
+          script = pathlib.Path(os.environ['AUDIT_SCRIPT'])
+          content = script.read_text(encoding='utf-8')
+          forbidden = [
+              r'\beth_sendRawTransaction\b',
+              r'\beth_sendTransaction\b',
+              r'\bcast\s+send\b',
+              r'\bstartBroadcast\s*\(',
+              r'\bbroadcast\s*\(',
+          ]
+          matches = [p for p in forbidden if re.search(p, content)]
+          if matches:
+              sys.exit('BLOQUEADO: script exige revisao manual: ' + repr(matches))
+          print('Checagem estatica OK (nao substitui revisao do codigo).')
+          PY
+
+      - name: Executar auditoria e guardar log
+        id: audit
+        shell: bash
+        env:
+          AUDIT_SCRIPT: ${{ steps.select.outputs.script }}
+          AUDIT_PASS: ${{ steps.select.outputs.pass_number }}
+        run: |
+          set -euo pipefail
+          mkdir -p audit-output
+          python3 -m py_compile "$AUDIT_SCRIPT"
+          echo "=== AUDITORIA PASSO $AUDIT_PASS ==="
+          python3 -u "$AUDIT_SCRIPT" 2>&1 | tee "audit-output/ci-pass$AUDIT_PASS.log"
+
+      - name: Resumo da execucao
+        if: always()
+        shell: bash
+        env:
+          AUDIT_SCRIPT: ${{ steps.select.outputs.script }}
+          AUDIT_PASS: ${{ steps.select.outputs.pass_number }}
+          AUDIT_OUTCOME: ${{ steps.audit.outcome }}
+        run: |
+          {
+            echo "## Spark ALM - auditoria automatica"
+            echo ""
+            echo "- Script: $AUDIT_SCRIPT"
+            echo "- Passo: $AUDIT_PASS"
+            echo "- Resultado da execucao: $AUDIT_OUTCOME"
+            echo "- Rede: Ethereum mainnet via RPC publico, somente leitura"
+            echo "- Logs e JSON: aba Artifacts nesta execucao"
+            echo ""
+            echo "Uma falha no teste nao confirma vulnerabilidade: interpretar logs."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Publicar logs e JSON
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: spark-audit-${{ github.run_id }}-${{ github.run_attempt }}
+          path: audit-output/
+          if-no-files-found: warn
+          retention-days: 30
