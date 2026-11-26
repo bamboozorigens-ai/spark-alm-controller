@@ -74,3 +74,13 @@ A consulta ampliada da lista de ativos corrigiu a avaliação anterior: o bounty
 
 ### Critério de submissão
 - A regra oficial da Sky exige que a falha exista no contrato implantado e permite considerar impacto crítico em qualquer contrato Sky implantado. O WEETH PoC continua demonstrando somente atraso recuperável: não satisfaz esse critério crítico e permanece não confirmado para impactos de menor severidade.
+
+
+## EMSP stUSDS emergency spells — permissão de agendamento
+
+Analisei os três alvos recém-adicionados: `StUsdsRateSetterDissBudSpell`, `StUsdsRateSetterHaltSpell` e `StUsdsWipeParamSpell`. A função base `DssEmergencySpell.schedule()` chama imediatamente a ação emergencial e não verifica diretamente o chamador, então testei a hipótese de disparo permissionless contra os três endereços implantados indicados pelo README do repositório.
+
+- Fork local Ethereum no bloco `26502755`; para um endereço atacante, cada chamada reverteu com `StUsdsMom/not-authorized`.
+- O motivo é que `StUsdsMom` autoriza chamadas via sua Authority (MCD_ADM); o spell precisa ser o endereço autorizado/hat. Os testes de integração upstream também exercitam esse requisito e esperam a reversão quando o spell não tem o hat.
+- Resultado: **3 aprovados, 0 falhos** em `test/audit/EmergencySpellPermissionlessScheduleFork.t.sol`. Nenhuma transação foi enviada à rede.
+- Conclusão: a ausência de ACL local em `schedule()` não forneceu bypass no deployment testado; o controle efetivo está no Mom. Usar um spell que foi legitimamente escolhido pela governança não é um ataque permissionless independente.
