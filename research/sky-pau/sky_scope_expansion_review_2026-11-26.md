@@ -1,0 +1,41 @@
+# Revisão de expansão do escopo Sky — 2026-11-26
+
+## Resultado
+
+Revisão estática adversarial dos contratos PAS, ValueRegistry, SBEBeam e FarmOwner listados no escopo Immunefi. **Nenhuma falha explorável por usuário não privilegiado, nem caminho confirmado para perda ou congelamento de fundos foi demonstrado nesta rodada.** Não enviar relatório de bounty com base nos pontos abaixo como se fossem vulnerabilidades confirmadas.
+
+## Escopo e fontes
+
+- PAS no commit [947e71cd5dbaaf9c5b3840dd1b23e8e99d9a564d](https://github.com/sky-ecosystem/pas/tree/947e71cd5dbaaf9c5b3840dd1b23e8e99d9a564d): `BeamState.sol`, `Configurator.sol`, `Timelock.sol`, `PASMom.sol`.
+- [ValueRegistry.sol](https://github.com/sky-ecosystem/value-registry/blob/main/src/ValueRegistry.sol).
+- DSS Flappers no commit [5d8215cee7b66591aa2f87023043c868a420fe27](https://github.com/sky-ecosystem/dss-flappers/tree/5d8215cee7b66591aa2f87023043c868a420fe27): `SBEBeam.sol`, `FarmOwner.sol`.
+- A página oficial de escopo lista estes ativos e limita recompensas a impactos expressamente aceitos: [Sky Scope no Immunefi](https://immunefi.com/bug-bounty/sky/scope/).
+
+## Verificações adversariais
+
+### PAS — BeamState e Configurator
+- Funções de configuração exigem `wards` ou combinação explícita de função e seletor. Não encontrei chamada permissionless capaz de alterar papéis, rate limits, whitelists ou ações de Controller.
+- `Configurator.setRateLimit` usa configuração inicial, limite de mudança e cooldown antes de encaminhar a escrita a RateLimits. Os cálculos de multiplicação podem reverter em casos de overflow, mas isso não contorna autorização nem aumenta limites.
+- Relações já configuradas com RateLimits/Controllers sobrevivem a `delRateLimits`/`delController`; os comentários definem a remoção como soft deprecation e exigem remover as relações individualmente. Não tratei esse comportamento documentado como bypass.
+
+### PAS — Timelock
+- Execução é permissionless após agendamento, mas agendar exige papel de proposer. Propostas maliciosas ou aprovação/governança maliciosa são exclusões expressas do programa.
+- O Timelock chama os alvos antes de remover seu índice da lista de operações. Uma tentativa de reentrar na mesma operação pode fazer a transação reverter na remoção duplicada; para chegar a isso, seria necessário que a operação agendada incluísse um alvo com callback apropriado. Não foi encontrada rota independente de atacante nem impacto reproduzível.
+- Pausa bloqueia agendamento, cancelamento e execução; o código documenta que o administrador pode despausar e cancelar em seguida.
+
+### PAS — PASMom
+- `PASInit.initMom` dá ao Mom ward em BeamState e `PAUSER_ROLE` no Timelock. Assim, as chamadas de emergência não dependem de um grant de papel ausente.
+- `owner` e `authority` continuam sendo controles privilegiados; não foi identificada escalada permissionless.
+
+### ValueRegistry
+- Verifiquei inserção/atualização/remoção, inclusive chave `bytes32(0)), posição trocada pela última chave e remoção repetida numa única chamada. Não encontrei corrupção de índice ou escrita sem `bud`.
+- As mutações de valores são restritas a operadores; os fluxos que consumiriam os parâmetros precisam ser analisados no respectivo contrato consumidor para avaliar impacto econômico.
+
+### SBEBeam e FarmOwner
+- `SBEBeam.set` restringe facilitador, estado do Splitter, cooldown, múltiplo RAY, burn, hop e taxa máxima; alterações no farm seguem a ownership configurada.
+- `FarmOwner` encaminha chamadas de administração do farm somente por wards. `recoverERC20` assume token padrão com retorno/reversão convencional, como indicado no comentário; não há evidência nesta revisão de que token não padrão esteja entre os ativos ativos relevantes.
+- Nenhum caminho de atacante externo para alterar parâmetros do burn stream ou retirar tokens foi confirmado.
+
+## Limitações e próximo passo
+
+Esta rodada foi revisão de código-fonte; não foi executada em fork. O ambiente atual não tem Foundry/Forge disponível, então não há PoC local ou resultado de teste automatizado a alegar. Para continuar com prioridade, confirmar no programa/deployment quais endereços e parâmetros desses ativos estão ativos e então construir simulações locais apenas para hipóteses com caminho de atacante não privilegiado.
