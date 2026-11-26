@@ -1,0 +1,133 @@
+name: Spark ALM - ataques simulados em fork (397-399-portfolio)
+
+on:
+  push:
+    branches:
+      - dev
+    paths:
+      - 'test/audit/pass39[7-9]_fork_v4_lp*.t.sol'
+      - '.github/workflows/spark-fork-portfolio-extra-397-399.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: spark-adversarial-fork-397-399-portfolio-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  adversarial-fork-only:
+    name: Passos 397-399-portfolio - testes adversariais isolados
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      MAINNET_RPC_URL: https://ethereum-rpc.publicnode.com
+      FOUNDRY_PROFILE: default
+
+    steps:
+      - name: Checkout do codigo sem credenciais persistentes
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          submodules: false
+
+      - name: Instalar somente forge-std e suas dependencias
+        shell: bash
+        run: |
+          set -euo pipefail
+          git submodule update --init --recursive --depth 1 lib/forge-std
+
+      - name: Instalar Foundry
+        uses: foundry-rs/foundry-toolchain@v1
+        with:
+          version: v1.5.1
+
+      - name: Verificar isolamento e impedir comandos de broadcast
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+          paths = [
+              Path("test/audit/pass397_fork_v4_lp_mev_portfolio.t.sol"),
+              Path("test/audit/pass398_fork_v4_lp_minimum_defense.t.sol"),
+              Path("test/audit/pass399_fork_v4_lp_repeated_exit_stress.t.sol"),
+          ]
+          forbidden = [
+              r'\bvm\.broadcast\s*\(',
+              r'\bvm\.startBroadcast\s*\(',
+              r'\bforge\s+script\b',
+              r'\bcast\s+send\b',
+              r'\beth_sendRawTransaction\b',
+              r'\beth_sendTransaction\b',
+          ]
+          for path in paths:
+              if not path.is_file():
+                  raise SystemExit(f"Arquivo de teste ausente: {path}")
+              contents = path.read_text(encoding="utf-8")
+              for pattern in forbidden:
+                  if re.search(pattern, contents):
+                      raise SystemExit(f"BLOQUEADO: padrao proibido em {path}: {pattern}")
+              if "ForkV4ExitHarness397" not in contents and "SparkTotalExposure" not in contents:
+                  raise SystemExit(f"BLOQUEADO: teste nao usa harness local: {path}")
+          fork_base = Path("test/audit/SparkFundedSwapSandwich.t.sol").read_text(encoding="utf-8")
+          if "vm.createSelectFork(" not in fork_base:
+              raise SystemExit("BLOQUEADO: base nao inicializa fork local")
+          for pattern in forbidden:
+              if re.search(pattern, fork_base):
+                  raise SystemExit(f"BLOQUEADO: base contem padrao proibido: {pattern}")
+          print("Tres testes presentes, fork local confirmado, sem broadcasts declarados.")
+          PY
+
+      - name: Executar testes adicionais 397-399 em fork local
+        id: tests
+        shell: bash
+        run: |
+          set +e
+          set -uo pipefail
+          mkdir -p audit-output
+          failures=0
+          for n in 397 398 399; do
+            case "$n" in
+              397) target="test/audit/pass397_fork_v4_lp_mev_portfolio.t.sol";;
+              398) target="test/audit/pass398_fork_v4_lp_minimum_defense.t.sol";;
+              399) target="test/audit/pass399_fork_v4_lp_repeated_exit_stress.t.sol";;
+            esac
+
+            echo "===== PASSO $n: FORK LOCAL / SEM TRANSMISSAO ====="
+            forge test --via-ir --match-path "$target" --match-test "testPass${n}" -vv \
+              2>&1 | tee "audit-output/ci-pass$n-fork.log"
+            result=${PIPESTATUS[0]}
+            if [ "$result" -eq 0 ]; then
+              status="PASSOU"
+            else
+              status="FALHOU ou INFRAESTRUTURA INCONCLUSIVA"
+              failures=$((failures+1))
+            fi
+
+            printf "PASSO %s: %s (exit=%s)\n" "$n" "$status" "$result" \
+              | tee -a "audit-output/pass397-399-portfolio-results.txt"
+            {
+              echo "### Passo $n"
+              echo ""
+              echo "- Arquivo: $target"
+              echo "- Status: $status"
+              echo "- Exit code: $result"
+              echo ""
+            } >> "$GITHUB_STEP_SUMMARY"
+          done
+
+          echo "Execucoes com falha ou inconclusivas: $failures"
+          echo "Falha de teste NAO equivale a vulnerabilidade."
+          exit "$failures"
+
+      - name: Publicar logs de cada passo
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: spark-fork-397-399-portfolio-${{ github.run_id }}
+          path: audit-output/
+          if-no-files-found: warn
+          retention-days: 30
