@@ -66,8 +66,15 @@ def request_json(url):
 
 
 def clean_cursor(cursor):
-    # urlencode(None) produces literal "None": invalid for Blockscout integer cursors.
-    return {key: value for key, value in cursor.items() if value is not None}
+    # The API cursor includes the JSON boolean "include_zero_value": true.
+    # urlencode serializes that as text and Blockscout rejects HTTP 422.
+    # Omit booleans, retaining numeric pagination fields and API defaults.
+    return {
+        key: value
+        for key, value in cursor.items()
+        if value is not None and not isinstance(value, bool)
+        and key != "include_zero_value"
+    }
 
 
 def get_page(controller, endpoint, cursor):
@@ -311,7 +318,7 @@ def scan(label, controller, endpoint):
         "is_exhaustive": exhausted, "error": error, "matches": matches
     }
 
-print("=== PASSO 363: TRACE-AWARE SPARK SWAP HISTORY ===", flush=True)
+print("=== PASSO 364: BLOCKSCOUT BOOLEAN-CURSOR FIX ===", flush=True)
 print("Source: Blockscout API v2, readonly", flush=True)
 print("Method selector:", SELECTOR, flush=True)
 
@@ -344,8 +351,8 @@ print("Potential matching calls", len(result["unique_transactions"]), flush=True
 print("CAUTION: internal-trace availability and pagination may be incomplete.", flush=True)
 print("Not finding a call does NOT prove no swaps: pagination and internal indexes can be partial.", flush=True)
 
-with open("audit-output/pass363_swap_history.json", "w") as file:
+with open("audit-output/pass364_swap_history.json", "w") as file:
     json.dump(result, file, ensure_ascii=False, indent=2)
 
-print("Saved audit-output/pass363_swap_history.json", flush=True)
+print("Saved audit-output/pass364_swap_history.json", flush=True)
 print("NO ARCHIVE RPC. NO LIVE TRANSACTIONS. NO KEYS REQUIRED.", flush=True)
