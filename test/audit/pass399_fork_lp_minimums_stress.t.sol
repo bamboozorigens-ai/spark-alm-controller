@@ -5,7 +5,7 @@ pragma solidity ^0.8.21;
 // Compare zero-min withdrawal against baseline-value-protecting minimums.
 // NO LIVE TX, no signed orders, fork is discarded after each test.
 import {console2} from "forge-std/console2.sol";
-import {SparkForkLPAdversarialBase397} from "./SparkForkLPAdversarialBase397.sol";
+import {SparkForkLPAdversarialBase397, ILP397PositionManager} from "./SparkForkLPAdversarialBase397.sol";
 
 contract SparkForkLPMinimumStress399 is SparkForkLPAdversarialBase397 {
     function testBaselineLevelMinimumsPreventSkewedSettlements() public {
