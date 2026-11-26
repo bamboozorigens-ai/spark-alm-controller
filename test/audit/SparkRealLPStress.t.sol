@@ -67,8 +67,8 @@ contract SparkRealLPStress is Test {
         assertGt(withdrawLiq, 0, "zero withdrawal fraction");
 
         // The only synthetic funds belong to the attacker. No deal() to ALMProxy.
-        deal(RLUSD, ATTACKER, 6_000_000e18, false);
-        deal(USDS, ATTACKER, 6_000_000e18, false);
+        deal(RLUSD, ATTACKER, 30_000_000e18, false);
+        deal(USDS, ATTACKER, 30_000_000e18, false);
         vm.startPrank(ATTACKER);
         _approve(RLUSD, PERMIT2, type(uint256).max);
         _approve(USDS, PERMIT2, type(uint256).max);
@@ -164,7 +164,7 @@ contract SparkRealLPStress is Test {
         }
         vm.revertToState(snap);
 
-        uint256[4] memory amounts = [uint256(10_000), 100_000, 500_000, 2_000_000];
+        uint256[6] memory amounts = [uint256(10_000), 500_000, 2_000_000, 8_000_000, 16_000_000, 25_000_000];
         uint256 passes;
         uint256 reversions;
         for (uint256 d; d < 2; d++) {
