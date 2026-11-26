@@ -8,6 +8,7 @@ ERC-20 transfers to/from actual Spark ALMProxy, and any discrepancies.
 Token flows represent the ENTIRE top-level tx (not necessarily only one swap).
 """
 import json
+import os
 import time
 import urllib.error
 import urllib.parse
@@ -31,6 +32,50 @@ TOKEN_META = {
     USDT: ("USDT", 6),
     USDS: ("USDS", 18),
 }
+RPC = os.environ.get("MAINNET_RPC_URL","https://ethereum-rpc.publicnode.com")
+TRANSFER_TOPIC = "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef"
+
+def rpc_receipt(tx_hash):
+    request = urllib.request.Request(
+        RPC, data=json.dumps({
+            "jsonrpc":"2.0","id":365,
+            "method":"eth_getTransactionReceipt","params":[tx_hash]
+        }).encode("utf-8"),
+        headers={"Content-Type":"application/json"}
+    )
+    with urllib.request.urlopen(request,timeout=30) as response:
+        payload=json.load(response)
+    if "error" in payload:
+        raise RuntimeError(str(payload["error"])[:230])
+    if payload.get("result") is None:
+        raise RuntimeError("No receipt found")
+    return payload["result"]
+
+def receipt_proxy_transfers(receipt):
+    net = {"USDT": Decimal(0), "USDS": Decimal(0)}
+    logs=[]
+    for log in receipt.get("logs",[]):
+        token_addr=addr(log.get("address"))
+        if token_addr not in TOKEN_META:
+            continue
+        topics=log.get("topics") or []
+        if len(topics)<3 or str(topics[0]).lower()!=TRANSFER_TOPIC:
+            continue
+        try:
+            sender="0x"+str(topics[1])[-40:].lower()
+            receiver="0x"+str(topics[2])[-40:].lower()
+            symbol,decimals=TOKEN_META[token_addr]
+            raw_amount=int(log.get("data","0x0"),16)
+            value=Decimal(raw_amount)/Decimal(10**decimals)
+            change=value * (int(receiver==PROXY)-int(sender==PROXY))
+            if sender==PROXY or receiver==PROXY:
+                net[symbol]+=change
+                logs.append({"symbol":symbol,"from":sender,"to":receiver,
+                    "amount":str(value),"delta_proxy":str(change),
+                    "log_index":log.get("logIndex")})
+        except (ValueError,TypeError) as exc:
+            logs.append({"parse_error":str(exc)[:120]})
+    return net,logs
 
 def fetch(path, query=None):
     url = BASE + path
@@ -190,6 +235,31 @@ for tx_hash in TXS:
         item["trace_error"]=str(exc)[:300]
         print("TRACE INCONCLUSIVE:",item["trace_error"],flush=True)
 
+    try:
+        receipt=rpc_receipt(tx_hash)
+        rpc_status=int(receipt["status"],16)
+        item["rpc_receipt"]={
+            "status":rpc_status,
+            "block_number":int(receipt["blockNumber"],16),
+            "transaction_index":int(receipt["transactionIndex"],16),
+            "gas_used":int(receipt["gasUsed"],16),
+            "effective_gas_price_wei":(
+                int(receipt["effectiveGasPrice"],16)
+                if receipt.get("effectiveGasPrice") else None
+            ),
+            "total_logs":len(receipt.get("logs",[]))
+        }
+        net_from_receipt, logs_from_receipt=receipt_proxy_transfers(receipt)
+        item["rpc_proxy_net_transfers"]={k:str(v) for k,v in net_from_receipt.items()}
+        item["rpc_proxy_transfer_details"]=logs_from_receipt
+        item["rpc_top_level_success"] = rpc_status==1
+        item["rpc_transfer_proof"]=(net_from_receipt["USDT"] < 0 and net_from_receipt["USDS"] > 0)
+        print("ETHEREUM RECEIPT:",json.dumps(item["rpc_receipt"]),flush=True)
+        print("ETHEREUM RECEIPT NET PROXY:",json.dumps(item["rpc_proxy_net_transfers"]),flush=True)
+    except Exception as exc:
+        item["rpc_receipt_error"]=str(exc)[:300]
+        print("RPC RECEIPT INCONCLUSIVE:",item["rpc_receipt_error"],flush=True)
+
     transfers,complete,error=transfers_for_hash(tx_hash)
     item["transfer_index_complete"]=complete
     item["transfers_error"]=error
@@ -220,9 +290,17 @@ for tx_hash in TXS:
     print("TOP-LEVEL SUCCESS:",item.get("top_level_success"),flush=True)
     print("DECODED CALL VALID:",item.get("valid_target_swap"),flush=True)
     print("PROXY SENT USDT AND RECEIVED USDS:",item["transfer_proof"],flush=True)
+    # Prefer independent Ethereum receipt confirmation. Indexed Blockscout
+    # transaction status/transfers remain the fallback if RPC is unavailable.
+    tx_success = item.get("rpc_top_level_success")
+    transfer_success = item.get("rpc_transfer_proof")
+    if tx_success is None:
+        tx_success = item.get("top_level_success", False)
+    if transfer_success is None:
+        transfer_success = item.get("transfer_proof", False)
     item["all_checks_pass"]=(
-        bool(item.get("top_level_success")) and
-        bool(item.get("valid_target_swap")) and item["transfer_proof"]
+        bool(tx_success) and
+        bool(item.get("valid_target_swap")) and bool(transfer_success)
     )
     print("ALL CHECKS PASS:",item["all_checks_pass"],flush=True)
     results.append(item)
@@ -230,7 +308,7 @@ for tx_hash in TXS:
 
 total=sum(bool(r.get("all_checks_pass")) for r in results)
 print("\n=== RESUMO ===",flush=True)
-print("Transactions fully validated:",total,"/",len(results),flush=True)
+print("Transactions fully validated:",total,"/",len(results),flush=True)\nprint("Primary proof: Ethereum receipts + decoded Blockscout raw traces.",flush=True)
 print("NOTE: transfer deltas cover the entire transaction, NOT solely an internal call.",flush=True)
 print("NOTE: proven execution does NOT prove public mempool visibility, sandwich or novel bug.",flush=True)
 with open("audit-output/pass365_actual_swaps.json","w") as f:
