@@ -46,9 +46,12 @@ contract SparkForkLPFrontPriceSkew397 is SparkForkLPAdversarialBase397 {
                     console2.log("Nominal withdrawal change, not protocol PnL");
                     console2.logInt(nominalDelta);
                     if(rl!=baseRL||us!=baseUS)changed++;
-                    assertEq(ILP397PositionManager(POSITION_MANAGER).getPositionLiquidity(NFT),
-                             (ILP397PositionManager(POSITION_MANAGER).getPositionLiquidity(NFT)+withdrawLiq)-withdrawLiq,
-                             "Position liquidity arithmetic overflow");
+                    assertEq(
+                        uint256(ILP397PositionManager(POSITION_MANAGER).getPositionLiquidity(NFT))
+                            + uint256(withdrawLiq),
+                        initialLiquidity,
+                        "FINDING: LP liquidity burn mismatch"
+                    );
                 } catch Error(string memory reason){
                     console2.log("INCONCLUSIVE front+withdraw",reason);
                 } catch(bytes memory reason){
