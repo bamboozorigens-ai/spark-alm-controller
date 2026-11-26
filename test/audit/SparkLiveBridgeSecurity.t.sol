@@ -109,9 +109,67 @@ contract SparkLiveBridgeSecurity is Test {
         ctrl.transferTokenLayerZero(USDT_OFT, 1e6, LZ_ARBITRUM_EID);
         console2.log("Unauthorized LayerZero caller rejected");
 
-        vm.expectRevert();
-        vm.prank(UNAUTHORIZED);
-        limits.triggerRateLimitDecrease(ctrl.LIMIT_USDC_TO_CCTP(), 1);
-        console2.log("Unauthorized rate-limit controller rejected");
+        // RateLimits is checked separately below via a raw call. This avoids
+        // false conclusions from an ambiguous vm.expectRevert() mismatch.
+    }
+
+    // PASSO 372: distinguish actual unauthorized access from an expectation
+    // mismatch. Unlike vm.expectRevert(), a low-level call exposes the real
+    // EVM success flag and revert data for explicit assertions.
+    function testUnauthorizedRateLimitDirectCall() public {
+        console2.log("=== PASSO 372: VERIFY RATELIMITS AUTHORIZATION DIRECTLY ===");
+        console2.log("Fork block", block.number);
+        bytes32 controllerRole = limits.CONTROLLER();
+        bytes32 globalKey = ctrl.LIMIT_USDC_TO_CCTP();
+
+        bool auditActorAuthorized = limits.hasRole(controllerRole, UNAUTHORIZED);
+        bool currentControllerAuthorized = limits.hasRole(controllerRole, CONTROLLER);
+        console2.log("Unauthorized address has CONTROLLER role", auditActorAuthorized);
+        console2.log("Official Spark controller has CONTROLLER role", currentControllerAuthorized);
+        assertFalse(auditActorAuthorized, "UNEXPECTED: test actor has RateLimits CONTROLLER role");
+        assertTrue(currentControllerAuthorized, "Official controller missing RateLimits role");
+
+        uint256 rateBefore = limits.getCurrentRateLimit(globalKey);
+        console2.log("Global CCTP limit before", rateBefore);
+
+        vm.startPrank(UNAUTHORIZED);
+        (bool callSucceeded, bytes memory returnData) = address(limits).call(
+            abi.encodeCall(IRateLimits.triggerRateLimitDecrease, (globalKey, 1))
+        );
+        vm.stopPrank();
+
+        console2.log("Unauthorized RateLimits call success", callSucceeded);
+        console2.log("Revert data bytes", returnData.length);
+        console2.logBytes(returnData);
+        assertFalse(callSucceeded, "SECURITY FINDING: unauthorized actor changed a rate limit");
+
+        // OpenZeppelin AccessControlUnauthorizedAccount(address,bytes32)
+        bytes4 revertSelector;
+        address rejectedActor;
+        bytes32 requiredRole;
+        if (returnData.length >= 68) {
+            assembly {
+                revertSelector := mload(add(returnData, 0x20))
+                rejectedActor := mload(add(returnData, 0x24))
+                requiredRole := mload(add(returnData, 0x44))
+            }
+            console2.logBytes4(revertSelector);
+            console2.log("Rejected caller extracted from revert", rejectedActor);
+            console2.log("Role required in revert:");
+            console2.logBytes32(requiredRole);
+            assertEq(
+                revertSelector,
+                bytes4(keccak256("AccessControlUnauthorizedAccount(address,bytes32)")),
+                "Unexpected revert reason"
+            );
+            assertEq(rejectedActor, UNAUTHORIZED, "Unexpected rejected actor");
+            assertEq(requiredRole, controllerRole, "Unexpected required role");
+        } else {
+            fail("Missing AccessControlUnauthorizedAccount revert payload");
+        }
+
+        uint256 rateAfter = limits.getCurrentRateLimit(globalKey);
+        assertEq(rateAfter, rateBefore, "Rate limit was modified by unauthorized call");
+        console2.log("RateLimit unchanged; unauthorized call correctly rejected");
     }
 }
