@@ -31,7 +31,7 @@ interface ICurveSwapPoolLive {
     function N_COINS() external view returns (uint256);
     function coins(uint256 index) external view returns (address);
     function stored_rates() external view returns (uint256[] memory);
-    function get_dy(uint256 i, uint256 j, uint256 amount) external view returns (uint256);
+    function get_dy(int128 i, int128 j, uint256 amount) external view returns (uint256);
 }
 
 interface IERC20SwapBalancesLive {
