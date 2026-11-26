@@ -126,7 +126,7 @@ contract SparkForkV4BoundaryAttacks393 is Test {
     }
 
     function testUnconfiguredPoolRejected() public {
-        assertEq(ctrl.maxSlippages(address(uint160(uint256(DISABLED_USDC_USDT_POOL))),0,
+        assertEq(ctrl.maxSlippages(address(uint160(uint256(DISABLED_USDC_USDT_POOL)))),0,
                  "Previously disabled test pool is now enabled");
         uint256 before=IERC20393(RLUSD).balanceOf(PROXY);
         (bool success,bytes memory reason)=_attempt(
