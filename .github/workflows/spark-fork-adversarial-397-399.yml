@@ -64,6 +64,15 @@ jobs:
               r'\beth_sendRawTransaction\b',
               r'\beth_sendTransaction\b',
           ]
+          base = Path("test/audit/SparkForkLPAdversarialBase397.sol")
+          if not base.is_file():
+              raise SystemExit("BLOQUEADO: arquivo-base de fork ausente")
+          base_code = base.read_text(encoding="utf-8")
+          if "vm.createSelectFork(" not in base_code:
+              raise SystemExit("BLOQUEADO: arquivo-base nao inicializa fork local")
+          for pattern in forbidden:
+              if re.search(pattern, base_code):
+                  raise SystemExit(f"BLOQUEADO: padrao proibido no arquivo-base: {pattern}")
           for path in paths:
               if not path.is_file():
                   raise SystemExit(f"Arquivo de teste ausente: {path}")
@@ -71,9 +80,9 @@ jobs:
               for pattern in forbidden:
                   if re.search(pattern, contents):
                       raise SystemExit(f"BLOQUEADO: padrao proibido em {path}: {pattern}")
-              if "vm.createSelectFork(" not in contents:
-                  raise SystemExit(f"BLOQUEADO: teste nao inicializa fork local: {path}")
-          print("Tres testes presentes, fork local confirmado, sem broadcasts declarados.")
+              if "SparkForkLPAdversarialBase397" not in contents:
+                  raise SystemExit(f"BLOQUEADO: teste nao herda o fork isolado: {path}")
+          print("Tres testes e base presentes, fork local confirmado, sem broadcasts declarados.")
           PY
 
       - name: Executar ataques economicos 397-399 com logs individuais
