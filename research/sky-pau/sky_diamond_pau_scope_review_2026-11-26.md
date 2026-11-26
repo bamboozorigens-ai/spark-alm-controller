@@ -36,6 +36,14 @@ A unit harness using the project's actual `Controller`, `Facet`, and `AccessCont
 
 Result: 3/3 local unit tests passed. This proves the guard is per Controller and the sibling role gate remains effective. It does not reproduce a deployed callback route, a token or asset loss, a bypass of the deployed AdministeredAgent actor controls, or a qualifying economic impact. The test-only role grant is a privilege change and cannot support a bounty claim by itself.
 
+## Broader callback and entry-point review
+
+A static scan of the concrete facet implementations found one state-changing external function without an explicit `onlyRole` modifier: `SwapAssetFacet.completeSwap`. Its source documents the alternate gate: the rate-limit key includes `msg.sender` as the counterparty proxy, and the caller must spend a configured limit for that exact proxy/asset tuple. That path is not inherently permissionless.
+
+A local Arbitrum fork call to the deployed PAU Controller using the `swapAsset_completeSwap(address,address,uint256)` selector reverted with `CallSelectorNotWired(bytes4)`. Therefore this callback entry point is not installed on the checked PAU deployment and cannot substantiate an attack against that live instance. The probe sent no transaction to Arbitrum; it executed only in Foundry's local fork state. The test passed by asserting the exact custom-error selector.
+
+Taken together, the reviewed sibling-reentry path is documented and its guard behavior is reproduced, but no public callback or unprivileged entry path into the shared proxy was identified in this pass. The Arbitrum deployment check further shows that the one roleless swap callback in source is not wired there. This closes that path for this deployment/revision; it does not prove every other deployment or future configuration safe.
+
 ## Next validation gate
 
 A bounty-grade claim would still require a local fork reproduction using an actual wired deployed operation and a callback that is reachable without changing the deployed roles or relying on a privileged address. The test must measure an accepted in-scope loss against the live rate limits and configuration. If the only path requires an already-authorized actor, or merely demonstrates accounting drift without qualifying loss, close the lead as non-reportable.
