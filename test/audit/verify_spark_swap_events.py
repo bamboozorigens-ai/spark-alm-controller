@@ -102,7 +102,7 @@ def pool_swap_events(receipt, topic):
             "liquidity": str(int(words[3], 16)),
             "tick": tick,
             "fee": int(words[5], 16),
-            "direction_USDT_to_USDS": amount0 > 0 and amount1 < 0
+            "direction_USDT_to_USDS": amount0 < 0 and amount1 > 0
         }
         result.append(evt)
     return result
@@ -149,7 +149,7 @@ def gross_proxy(rows):
         for sym, data in result.items()
     }
 
-print("=== PASSO 366: VERIFICACAO BRUTA DOS 3 SWAPS ===", flush=True)
+print("=== PASSO 367: EVENTO CORE CORRIGIDO E SWAPS VERIFICADOS ===", flush=True)
 actual_transfer_topic = get_topic("Transfer(address,address,uint256)")
 if actual_transfer_topic != TRANSFER_TOPIC:
     raise RuntimeError("ERC20 Transfer topic mismatch; stop analysis")
@@ -182,8 +182,8 @@ for entry in TRANSACTIONS:
         eligible = [
             evt for evt in events
             if evt.get("direction_USDT_to_USDS")
-            and Decimal(evt["amount0_USDT"]) == Decimal(1_000_000)
-            and Decimal(evt["amount1_USDS"]) * -1 >= Decimal(entry["min_out_USDS"])
+            and Decimal(evt["amount0_USDT"]) == Decimal(-1_000_000)
+            and Decimal(evt["amount1_USDS"]) >= Decimal(entry["min_out_USDS"])
         ]
         record["matched_successful_pool_swap"] = (
             record["status"] == 1 and len(eligible) >= 1
@@ -209,7 +209,7 @@ for entry in TRANSACTIONS:
     time.sleep(0.35)
 
 validated = sum(bool(r.get("matched_successful_pool_swap")) for r in report)
-with open("audit-output/pass366_swap_events.json", "w") as stream:
+with open("audit-output/pass367_swap_events.json", "w") as stream:
     json.dump({
         "validation_count": validated,
         "transactions": report,
@@ -220,4 +220,4 @@ print("\n=== SUMMARY ===", flush=True)
 print("Successful core swaps matching 1m USDT + minOut:", validated, "/", len(report), flush=True)
 print("Archive RPC is NOT required for historical transaction receipts.", flush=True)
 print("Does not establish mempool visibility, sandwich, attacker identity or novel vulnerability.", flush=True)
-print("NO TRANSACTIONS SENT. Report: audit-output/pass366_swap_events.json", flush=True)
+print("NO TRANSACTIONS SENT. Report: audit-output/pass367_swap_events.json", flush=True)
