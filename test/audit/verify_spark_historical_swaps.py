@@ -308,7 +308,8 @@ for tx_hash in TXS:
 
 total=sum(bool(r.get("all_checks_pass")) for r in results)
 print("\n=== RESUMO ===",flush=True)
-print("Transactions fully validated:",total,"/",len(results),flush=True)\nprint("Primary proof: Ethereum receipts + decoded Blockscout raw traces.",flush=True)
+print("Transactions fully validated:",total,"/",len(results),flush=True)
+print("Primary proof: Ethereum receipts + decoded Blockscout raw traces.",flush=True)
 print("NOTE: transfer deltas cover the entire transaction, NOT solely an internal call.",flush=True)
 print("NOTE: proven execution does NOT prove public mempool visibility, sandwich or novel bug.",flush=True)
 with open("audit-output/pass365_actual_swaps.json","w") as f:
