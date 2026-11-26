@@ -46,8 +46,19 @@ contract SparkFundedSwapSandwich is Test {
 
     PoolKey internal key;
 
+    // Override to return 0 in a derived test that needs live RPC state.
+    // The original sandwich regression remains pinned to block 26_495_859.
+    function _forkBlockNumber() internal pure virtual returns (uint256) {
+        return 26_495_859;
+    }
+
     function setUp() public {
-        vm.createSelectFork(vm.envString("MAINNET_RPC_URL"), 26_495_859);
+        uint256 fixedBlock = _forkBlockNumber();
+        if (fixedBlock == 0) {
+            vm.createSelectFork(vm.envString("MAINNET_RPC_URL"));
+        } else {
+            vm.createSelectFork(vm.envString("MAINNET_RPC_URL"), fixedBlock);
+        }
         key = IFSPositionManager(POSITION_MANAGER).poolKeys(bytes25(POOL));
         assertEq(keccak256(abi.encode(key)), POOL, "Pool key mismatch");
         assertEq(Currency.unwrap(key.currency0), RLUSD, "Pool token0 mismatch");
