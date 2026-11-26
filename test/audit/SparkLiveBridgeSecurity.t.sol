@@ -26,11 +26,11 @@ interface ISparkBridgeControllerRead {
     function transferTokenLayerZero(address oft, uint256 amount, uint32 endpointId) external payable;
 }
 contract SparkLiveBridgeSecurity is Test {
-    address constant CONTROLLER = 0xc953972cd006d1f12686fd7185c6d443b15900cd;
-    address constant PROXY = 0x1601843c5e9bc251a3272907010afa41fa18347e;
-    address constant LIMITS = 0x7a5fd5cf045e010e62147f065ceae59e5344b188;
-    address constant USDC = 0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48;
-    address constant USDT_OFT = 0x6c96de32cea08842dcc4058c14d3aaad7fa41dee;
+    address constant CONTROLLER = 0xc953972Cd006d1f12686fd7185c6D443b15900Cd;
+    address constant PROXY = 0x1601843c5E9bC251A3272907010AFa41Fa18347E;
+    address constant LIMITS = 0x7A5FD5cf045e010e62147F065cEAe59e5344b188;
+    address constant USDC = 0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48;
+    address constant USDT_OFT = 0x6C96dE32CEa08842dcc4058c14d3aaAD7Fa41dee;
 
     uint32 constant CCTP_DOMAIN_ETHEREUM = 0;
     uint32 constant CCTP_DOMAIN_ARBITRUM = 3;
