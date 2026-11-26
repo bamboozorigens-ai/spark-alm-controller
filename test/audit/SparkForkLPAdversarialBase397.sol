@@ -145,7 +145,6 @@ abstract contract SparkForkLPAdversarialBase397 is Test {
         );
         receivedRLUSD=_balance(RLUSD,PROXY)-beforeRL;
         receivedUSDS=_balance(USDS,PROXY)-beforeUS;
-        assertEq(_balance(RLUSD,ATTACKER)>=0,true); // no external payout assumption
     }
 
     // External-only wrappers permit independent revert-catching via try/catch.
