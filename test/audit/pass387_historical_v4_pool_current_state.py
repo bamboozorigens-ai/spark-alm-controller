@@ -22,7 +22,6 @@ import os
 import subprocess
 import time
 import urllib.error
-import urllib.parse
 import urllib.request
 from pathlib import Path
 
@@ -32,7 +31,6 @@ LIMITS = "0x7a5fd5cf045e010e62147f065ceae59e5344b188"
 PROXY = "0x1601843c5e9bc251a3272907010afa41fa18347e"
 POSITION_MANAGER = "0xbd216513d74c8cf14cf4747e6aaa6420ff64ee9e"
 STATE_VIEW = "0x7ffe42c4a5deea5b0fec41c94c136cf115597227"
-API = "https://eth.blockscout.com/api/v2"
 KNOWN_POOL_IDS = {
     "Prior Spark audit: RLUSD / USDS":
         "0x9035721b23481db3888fd201b9c2b26dbc3af60258bca65e669f2ed98dc8eb4f",
@@ -55,8 +53,6 @@ ROOT_LABELS = {
     "DEPOSIT": "LIMIT_UNISWAP_V4_DEPOSIT",
     "WITHDRAW": "LIMIT_UNISWAP_V4_WITHDRAW",
 }
-MAX_PAGES = int(os.getenv("V4_EVENT_PAGE_CAP", "2"))
-MAX_IDS = int(os.getenv("V4_POOL_ID_CAP", "12"))
 READ_RETRIES = max(1, int(os.getenv("V4_RPC_RETRIES", "2")))
 TIMEOUT = max(5, int(os.getenv("V4_RPC_TIMEOUT", "16")))
 ONCHAIN_CALLS = 0
@@ -149,60 +145,6 @@ def read_tuple(to, signature, args, size, label):
 
 def keccak_hex(encoded):
     return run_cast("keccak", "0x" + encoded.hex()).lower()
-
-def event_ids():
-    """Unused helper retained from Passo 386; NEVER CALLED in this script."""
-    topic = run_cast("keccak", "UniswapV4TickLimitsSet(bytes32,int24,int24,uint24)").lower()
-    ids, cursor, visited = {}, {}, set()
-    error = None
-    complete = False
-    for _ in range(MAX_PAGES):
-        marker = json.dumps(cursor, sort_keys=True)
-        if marker in visited:
-            error = "Repeated cursor"
-            break
-        visited.add(marker)
-        params = {"topic": topic}
-        params.update({k: v for k, v in cursor.items()
-                       if v is not None and not isinstance(v, bool)
-                       and k != "include_zero_value"})
-        url = API + "/addresses/" + CONTROLLER + "/logs?" + urllib.parse.urlencode(params)
-        try:
-            req = urllib.request.Request(
-                url, headers={
-                    "Accept": "application/json",
-                    "User-Agent": "SparkAuditReadOnly386"
-                }
-            )
-            with urllib.request.urlopen(req, timeout=14) as res:
-                payload = json.load(res)
-            for row in payload.get("items") or []:
-                topics = row.get("topics") or []
-                if len(topics) < 2 or str(topics[0]).lower() != topic:
-                    continue
-                candidate = str(topics[1]).lower()
-                if len(candidate) != 66 or not candidate.startswith("0x"):
-                    continue
-                ids.setdefault(candidate, []).append({
-                    "block": row.get("block_number"),
-                    "tx": row.get("transaction_hash")
-                })
-            next_cursor = payload.get("next_page_params")
-            if not next_cursor:
-                complete = True
-                break
-            cursor = {k: v for k, v in next_cursor.items()
-                      if v is not None and not isinstance(v, bool)
-                      and k != "include_zero_value"}
-            if not cursor:
-                error = "Empty cursor"
-                break
-        except (urllib.error.URLError, TimeoutError, ValueError, KeyError) as ex:
-            error = str(ex)[:320]
-            break
-    if not complete and error is None:
-        error = "Page cap reached; event history may be incomplete"
-    return ids, complete, error
 
 def limit_for(root, pool_id, name):
     key = keccak_hex(bytes.fromhex(root[2:] + pool_id[2:]))
@@ -348,10 +290,6 @@ print("Retries per eth_call:",READ_RETRIES,flush=True)
 discover, complete, discovery_error = {}, None, "Not requested (avoids timed-out Blockscout API)"
 pool_ids = dict(KNOWN_POOL_IDS)  # label -> full bytes32 poolId
 all_pairs = list(pool_ids.items())
-if len(all_pairs) > MAX_IDS:
-    print("LIMITED: selected",MAX_IDS,"of",len(all_pairs),"pool IDs",flush=True)
-    all_pairs = all_pairs[:MAX_IDS]
-
 roots = {}
 for label, getter in ROOT_LABELS.items():
     root_value, err = read_u256(CONTROLLER, getter + "()", [], label+":root")
