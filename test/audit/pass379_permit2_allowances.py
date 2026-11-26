@@ -12,12 +12,12 @@ import json
 import os
 import subprocess
 import urllib.request
-from datetime import datetime, timezone
+from decimal import Decimal
 from pathlib import Path
 
 RPC = os.environ.get("MAINNET_RPC_URL", "https://ethereum-rpc.publicnode.com")
 PROXY = "0x1601843c5e9bc251a3272907010afa41fa18347e"
-PERMIT2 = "0x000000000022d473030f116ddeE9f6b43ac78ba3"
+PERMIT2 = "0x000000000022D473030F116dDEE9F6B43aC78BA3"
 ROUTER = "0x66a9893cc07d91d95644aedd05d03f95e1dba8af"
 POSITION_MANAGER = "0xbd216513d74c8cf14cf4747e6aaa6420ff64ee9e"
 TOKENS = {
@@ -79,7 +79,7 @@ for name,(token,decimals) in TOKENS.items():
     if err:errors.append({"token":name,"method":"balanceOf","error":err})
     balance=number(bal[0]) if bal else None
     row={"token":name,"contract":token,"decimals":decimals,"balance_native":balance,
-         "balance_token_units":str(balance/(10**decimals)) if balance is not None else None,
+         "balance_token_units":str(Decimal(balance) / (Decimal(10)**decimals)) if balance is not None else None,
          "direct_erc20_allowances":{},"permit2_spender_allowances":{}}
     print("\nTOKEN",name,"proxy_balance_native",balance,flush=True)
     for spender_name,spender in SPENDERS.items():
