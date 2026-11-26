@@ -4,7 +4,7 @@ pragma solidity ^0.8.21;
 // PASSO 397: compare actual Spark LP withdrawals with/without a preceding
 // public market price disturbance. All operations are LOCAL-FORK ONLY.
 import {console2} from "forge-std/console2.sol";
-import {SparkForkLPAdversarialBase397} from "./SparkForkLPAdversarialBase397.sol";
+import {SparkForkLPAdversarialBase397, ILP397PositionManager} from "./SparkForkLPAdversarialBase397.sol";
 
 contract SparkForkLPFrontPriceSkew397 is SparkForkLPAdversarialBase397 {
     function testBaselineRealPositionWithdrawal() public {
