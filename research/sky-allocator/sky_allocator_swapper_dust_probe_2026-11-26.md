@@ -36,3 +36,23 @@ Accordingly, do not submit this as a critical or permissionless exploit. It is a
 - Read the deployed `AllocatorRoles` action/user-role mappings and the actual `StableSwapper.buds` mapping at a pinned block.
 - Establish whether any public keeper endpoint forwards attacker-controlled `callee`, `data`, or `minOut`.
 - Re-run against the deployed bytecode and actual buffer tokens only after all three reachability checks pass.
+
+## Adversarial review update (2026-11-26)
+
+### Prior-audit comparison
+
+The 2023 FPS assessment explicitly reviewed reentrancy in `Swapper.swap` and reported no safety violation under the intended access-controlled model; it notes that unfavorable nested swaps would depend on poor configuration or a maliciously trusted actor. The 2023 Cantina review separately discusses the split `AllocatorRoles`/`wards` authorization model and assumes keepers are whitelisted. In the reviewed excerpts, neither report names the specific pre-existing-destination-balance condition exercised by this PoC. This does not establish that the condition is novel across all audits, commits, or deployments.
+
+### Current program fit and deployment uncertainty
+
+The current Immunefi page lists only accepted impacts and explicitly excludes impacts requiring access to privileged addresses without an additional privilege change. Its scope page displays 258 total assets but its rendered first page does not include `dss-allocator`, `Swapper`, or `StableSwapper`; keyword searches in the rendered page also returned no match. Because the page is paginated and indicates “Show all,” this is not proof that the contracts are absent from the complete asset list. The program further says vulnerabilities must exist in deployed contracts and notes old versions mitigated by current deployments are out of scope.
+
+No proof has been obtained that this illustrative `Swapper`/`StableSwapper` pair is currently deployed, linked to a funded buffer, included in a complete in-scope asset entry, or reachable through an unprivileged caller-controlled keeper route. A whitelisted keeper call itself is excluded absent evidence of an additional privilege modification. Therefore this remains a conditional accounting weakness in the illustrative repository code, not a reportable critical issue or a demonstrated route to protocol-wide extraction.
+
+### Severity / loss statement
+
+The local scenario is deliberately an authorized-keeper simulation, and its $10 gross difference assumes exact parity and the selected local amounts. It does not establish a repeatable economic gain on a live deployment, the available balance at risk, or a path to large-scale extraction. No actual funds, mainnet state, public testnet, external DEX, oracle, or third-party contract were modified or tested.
+
+### Safe next gate
+
+Before elevating this lead, verify the exact complete scope asset entry, current Chainlog address and bytecode match, funded-buffer exposure, and whether a non-privileged input path can select the callee while all authorization gates remain intact. If any one of those preconditions fails, close this lead as non-actionable. Keep all reproduction on a local fork with mock callees and local token state.
