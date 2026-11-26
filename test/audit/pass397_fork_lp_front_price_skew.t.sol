@@ -20,6 +20,7 @@ contract SparkForkLPFrontPriceSkew397 is SparkForkLPAdversarialBase397 {
         uint256[3] memory sizes=[uint256(250_000),1_000_000,5_000_000];
         uint256 passes;
         uint256 changed;
+        uint256 initialLiquidity=ILP397PositionManager(POSITION_MANAGER).getPositionLiquidity(NFT);
 
         for(uint256 direction=0;direction<2;direction++){
             bool frontWithUSDS=direction==1;
