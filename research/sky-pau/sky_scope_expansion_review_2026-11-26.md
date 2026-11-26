@@ -12,7 +12,7 @@ Foi feita também uma reprodução separada do fluxo WEETH em fork local. Ela de
 - [ValueRegistry.sol](https://github.com/sky-ecosystem/value-registry/blob/main/src/ValueRegistry.sol).
 - DSS Flappers no commit [5d8215cee7b66591aa2f87023043c868a420fe27](https://github.com/sky-ecosystem/dss-flappers/tree/5d8215cee7b66591aa2f87023043c868a420fe27): `SBEBeam.sol`, `FarmOwner.sol`.
 - A página oficial de escopo lista os ativos e limita recompensas aos impactos expressamente aceitos: [Sky Scope no Immunefi](https://immunefi.com/bug-bounty/sky/scope/). A página de recursos orienta pesquisadores aos repositórios em [sky-ecosystem](https://github.com/sky-ecosystem) e ao [Chainlog](https://chainlog.sky.money/) para endereços atuais.
-- Para o PAU/WEETH, a página de escopo consultada não expôs os nomes `PAU` ou `WEETH` em seu conteúdo textual. Como os ativos são paginados, ainda é necessário confirmar a lista completa e o deployment exato antes de alegar elegibilidade.
+- Correção de escopo: a lista atual inclui `L2_PAU_Factory` (alvo `PAUFactory.sol`, commit `cbf71b2ac840ca9288eb867d3dd354e08089e1d7`) e `L2_ADMINISTERED_AGENT_FACTORY` (commit `5e6b52f45266913a9bc0611d417aef2c7752ab25`). Além disso, a regra do programa permite submeter para consideração impactos críticos em qualquer contrato Sky implantado, desde que a falha exista no deployment atual. A elegibilidade do WEETH para impactos abaixo de crítico ainda depende de sua inclusão específica na lista de ativos.
 
 ## Verificações adversariais
 
@@ -57,3 +57,20 @@ Foi feita também uma reprodução separada do fluxo WEETH em fork local. Ela de
 ## Limitações e próximo passo
 
 A revisão não encontrou até agora falha nova de alto impacto nos alvos PAS, ValueRegistry, SBEBeam ou FarmOwner. O próximo filtro para maximizar valor de bounty é confirmar os ativos e deployments elegíveis, depois priorizar hipóteses de roubo direto, insolvência ou congelamento permanente com PoC local. O resultado WEETH deve permanecer rotulado como candidato de disponibilidade fora de escopo ou elegibilidade não confirmada, sem ser apresentado como vulnerabilidade crítica.
+
+
+## Alvos PAU explicitamente listados — análise adicional
+
+A consulta ampliada da lista de ativos corrigiu a avaliação anterior: o bounty inclui o alvo `L2_PAU_Factory` no commit [cbf71b2](https://github.com/sky-ecosystem/diamond-pau/blob/cbf71b2ac840ca9288eb867d3dd354e08089e1d7/src/PAUFactory.sol) e `L2_ADMINISTERED_AGENT_FACTORY` no commit [5e6b52f](https://github.com/sky-ecosystem/pau-administered-agent/blob/5e6b52f45266913a9bc0611d417aef2c7752ab25/src/AdministeredAgentFactory.sol).
+
+### PAUFactory
+- No commit indicado pelo bounty, os métodos públicos criam componentes novos com parâmetros fornecidos pelo chamador. `deployController` aceita endereços externos para AccessControls, proxy e RateLimits, mas não concede ao Controller criado papel em nenhum desses contratos existentes.
+- O chamador pode escolher os administradores dos componentes recém-criados; isso afeta apenas a instância solicitada pelo próprio chamador. Não foi identificado caminho para alterar ou drenar uma instância PAU já implantada.
+- Observação de versão: o checkout local `dev` estava no commit `b0b7efd`, posterior ao commit exato listado pelo programa. Os 9 testes locais de `PAUFactory` passaram, mas exercitam esse checkout mais recente e não são evidência de PoC para o bytecode do alvo antigo.
+
+### AdministeredAgentFactory
+- O método público `deploy(admin)` cria um novo agente; o contrato agente rejeita admin zero e concede a administração inicial somente ao endereço recebido.
+- A factory não retém papel e não escreve em AccessControls, ALMProxy ou RateLimits existentes. A análise do código não identificou escalada de papel ou efeito sobre instâncias pré-existentes.
+
+### Critério de submissão
+- A regra oficial da Sky exige que a falha exista no contrato implantado e permite considerar impacto crítico em qualquer contrato Sky implantado. O WEETH PoC continua demonstrando somente atraso recuperável: não satisfaz esse critério crítico e permanece não confirmado para impactos de menor severidade.
