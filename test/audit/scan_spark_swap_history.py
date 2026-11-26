@@ -196,7 +196,7 @@ def parse_swap(raw):
     }
 
 def scan(label, controller, endpoint):
-    print("\\n---", label, endpoint, "---", flush=True)
+    print("\n---", label, endpoint, "---", flush=True)
     cursor = {}
     page_count = 0
     scanned = 0
@@ -323,7 +323,7 @@ for label, controller in CONTROLLERS.items():
         result["runs"].append(run)
         for item in run["matches"]:
             dedup[
-                (item.get("transaction_hash"), label, item.get("call_kind"))
+                (item.get("transaction_hash"), label, item.get("source"), json.dumps(item.get("parsed_swap"),sort_keys=True))
             ] = item
 
 result["unique_transactions"] = list(dedup.values())
@@ -334,11 +334,14 @@ for run in result["runs"]:
         "pages", run["pages"],
         "records", run["records_scanned"],
         "matches", len(run["matches"]),
-        "calls_to_controller", run["calls_to_controller"],\n        "traces_checked", run["raw_trace_requests"],\n        "complete", run["is_exhaustive"],
+        "calls_to_controller", run["calls_to_controller"],
+        "traces_checked", run["raw_trace_requests"],
+        "complete", run["is_exhaustive"],
         "error", run["error"],
         flush=True
     )
-print("Potential matching calls", len(result["unique_transactions"]), flush=True)\nprint("CAUTION: internal-trace availability and pagination may be incomplete.", flush=True)
+print("Potential matching calls", len(result["unique_transactions"]), flush=True)
+print("CAUTION: internal-trace availability and pagination may be incomplete.", flush=True)
 print("Not finding a call does NOT prove no swaps: pagination and internal indexes can be partial.", flush=True)
 
 with open("audit-output/pass363_swap_history.json", "w") as file:
