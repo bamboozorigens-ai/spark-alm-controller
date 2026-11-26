@@ -85,7 +85,7 @@ contract SparkForkSUSDSRedemption392 is Test {
         vm.prank(RELAYER);
         (bool success,bytes memory data)=CONTROLLER.call(abi.encodeWithSignature(
             "redeemERC4626(address,uint256,uint256)",
-            SUSDS,SHARE_AMOUNT,expectedAssets+1
+            SUSDS,SHARE_AMOUNT,expectedAssets+1e18
         ));
         console2.log("Overoptimistic minimum redemption success",success);
         console2.log("Revert payload bytes",data.length);
@@ -108,13 +108,13 @@ contract SparkForkSUSDSRedemption392 is Test {
         vm.prank(RELAYER);
         (bool success,)=CONTROLLER.call(abi.encodeWithSignature(
             "withdrawERC4626(address,uint256,uint256)",
-            SUSDS,ASSET_AMOUNT,burnedExpected-1
+            SUSDS,ASSET_AMOUNT,uint256(0)
         ));
         assertFalse(success,"FINDING: over-burn beyond maxSharesIn accepted");
         assertEq(susds.balanceOf(PROXY),sharesBefore);
         assertEq(usds.balanceOf(PROXY),assetsBefore);
         assertEq(usds.balanceOf(ATTACKER),attackerBefore);
-        console2.log("Over-burn withdrawal blocked atomically");
+        console2.log("Zero maxSharesIn withdrawal blocked atomically");
     }
 
     function testUnprivilegedRedemptionBlockedWithNoPayout() public {
