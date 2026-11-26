@@ -131,14 +131,16 @@ contract SparkLiveRLUSDCurveExecution is Test {
     }
 
     function testUnprivilegedCallerCannotSwap() public {
-        vm.startPrank(UNAUTHORIZED);
-        vm.expectRevert(
-            abi.encodeWithSignature(
-                "AccessControlUnauthorizedAccount(address,bytes32)",
-                UNAUTHORIZED,
-                ctrl.RELAYER()
-            )
+        // Precompute the expected role BEFORE expectRevert; otherwise the
+        // getter call could consume Foundry's next-call expectation.
+        bytes32 role = ctrl.RELAYER();
+        bytes memory expected = abi.encodeWithSignature(
+            "AccessControlUnauthorizedAccount(address,bytes32)",
+            UNAUTHORIZED,
+            role
         );
+        vm.startPrank(UNAUTHORIZED);
+        vm.expectRevert(expected);
         ctrl.swapCurve(POOL, 1, 0, ONE_MILLION_RLUSD, 999_000e6);
         vm.stopPrank();
         console2.log("Unauthorized swap rejected");
