@@ -52,9 +52,9 @@ ROOT_LABELS = {
     "WITHDRAW": "LIMIT_UNISWAP_V4_WITHDRAW",
 }
 MAX_PAGES = int(os.getenv("V4_EVENT_PAGE_CAP", "2"))
-MAX_IDS = int(os.getenv("V4_POOL_ID_CAP", "24"))
-READ_RETRIES = max(1, int(os.getenv("V4_RPC_RETRIES", "3")))
-TIMEOUT = max(5, int(os.getenv("V4_RPC_TIMEOUT", "19")))
+MAX_IDS = int(os.getenv("V4_POOL_ID_CAP", "12"))
+READ_RETRIES = max(1, int(os.getenv("V4_RPC_RETRIES", "2")))
+TIMEOUT = max(5, int(os.getenv("V4_RPC_TIMEOUT", "16")))
 ONCHAIN_CALLS = 0
 RPC_ERRORS = []
 
@@ -325,7 +325,7 @@ discover, complete, discovery_error = event_ids()
 print("Optional V4 indexed tick-limit events:",len(discover),
       "complete:",complete,"error:",discovery_error,flush=True)
 
-pool_ids = {id_: label for label, id_ in KNOWN_POOL_IDS.items()}
+pool_ids = dict(KNOWN_POOL_IDS)  # label -> full bytes32 poolId
 for id_, txns in discover.items():
     if id_ not in pool_ids.values():
         pool_ids["Indexed production event: " + str(len(pool_ids))] = id_
