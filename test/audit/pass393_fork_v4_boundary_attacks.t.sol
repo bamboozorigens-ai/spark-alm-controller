@@ -29,7 +29,7 @@ contract SparkForkV4BoundaryAttacks393 is Test {
     address constant RELAYER=0x8a25A24EDE9482C4Fc0738F99611BE58F1c839AB;
     address constant LIMITS=0x7A5FD5cf045e010e62147F065cEAe59e5344b188;
     address constant RLUSD=0x8292Bb45bf1Ee4d140127049757C2E0fF06317eD;
-    address constant PYUSD=0x6c3ea9036406852006290770bedfcaba0e23a0e8;
+    address constant PYUSD=address(bytes20(hex"6c3ea9036406852006290770bedfcaba0e23a0e8"));
     address constant USDS=0xdC035D45d973E3EC169d2276DDab16f1e407384F;
     address constant PERMIT2=0x000000000022D473030F116dDEE9F6B43aC78BA3;
     address constant ATTACKER=address(0xA771AC);
