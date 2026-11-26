@@ -165,7 +165,7 @@ contract SparkLiveBridgeSecurity is Test {
             assertEq(rejectedActor, UNAUTHORIZED, "Unexpected rejected actor");
             assertEq(requiredRole, controllerRole, "Unexpected required role");
         } else {
-            fail("Missing AccessControlUnauthorizedAccount revert payload");
+            revert("Missing AccessControlUnauthorizedAccount revert payload");
         }
 
         uint256 rateAfter = limits.getCurrentRateLimit(globalKey);
