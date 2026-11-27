@@ -1,3 +1,8 @@
+// Controlled PoC for sky-ecosystem/diamond-pau.
+// Place in that repository at test/audit/MapleImpairmentDepositSimulation.t.sol
+// and run: forge test --match-path test/audit/MapleImpairmentDepositSimulation.t.sol -vv
+// This uses a synthetic impairment mock, not Maple bytecode, and is not a live exploit.
+
 // SPDX-License-Identifier: AGPL-3.0-or-later
 pragma solidity ^0.8.34;
 
@@ -5,6 +10,7 @@ import { ERC20 } from "../../lib/openzeppelin-contracts/contracts/token/ERC20/ER
 import { IERC20 } from "../../lib/openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
 
 import { IController } from "../../src/interfaces/IController.sol";
+import { IALMProxy } from "../../src/interfaces/IALMProxy.sol";
 import { IRateLimits } from "../../src/interfaces/IRateLimits.sol";
 import { IEnumerableIntegrations } from "../../src/interfaces/IEnumerableIntegrations.sol";
 import { IFacet } from "../../src/facets/IFacet.sol";
@@ -102,14 +108,54 @@ contract MapleImpairmentDepositSimulation is Integration_TestBase {
     }
 
     function test_impairedDepositPassesGrossExchangeRateButHasLowerExitValue() external {
+        uint256 existingShares = mapleLike.balanceOf(address(mapleLike));
+        uint256 existingExitValueBefore = mapleLike.exitValue(existingShares);
+
         vm.prank(allocator);
         uint256 shares = IControllerERC4626Audit(controller).deposit(address(mapleLike), NEW_DEPOSIT, NEW_DEPOSIT);
 
         uint256 exitValue = mapleLike.exitValue(shares);
+        uint256 existingExitValueAfter = mapleLike.exitValue(existingShares);
 
         assertEq(shares, NEW_DEPOSIT); // gross-price exchange rate is exactly 1:1
         assertEq(exitValue, NEW_DEPOSIT * 900_000 / 1_100_000);
         assertEq(NEW_DEPOSIT - exitValue, 18_181_818_182);
+        assertEq(existingExitValueBefore, 800_000e6);
+        assertEq(existingExitValueAfter - existingExitValueBefore, 18_181_818_181);
+    }
+
+    function test_zeroRateLimitBlocksDepositBeforeAssetsMove() external {
+        address proxy = IController(controller).proxy();
+        bytes32 depositKey = IControllerERC4626Audit(controller).getDepositRateLimitKey(
+            address(mapleLike), address(usd)
+        );
+        vm.prank(admin);
+        rateLimits.setRateLimitData(depositKey, 0, 0);
+
+        uint256 beforeBalance = usd.balanceOf(proxy);
+        vm.expectRevert(bytes("RateLimits/zero-maxAmount"));
+        vm.prank(allocator);
+        IControllerERC4626Audit(controller).deposit(address(mapleLike), NEW_DEPOSIT, 0);
+        assertEq(usd.balanceOf(proxy), beforeBalance);
+    }
+
+    function test_directProxyCallCannotBypassFacetRateLimit() external {
+        address proxy = IController(controller).proxy();
+        bytes memory data = abi.encodeCall(
+            ImpairedMapleLikeVault.deposit,
+            (NEW_DEPOSIT, proxy)
+        );
+
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IFacet.AccessControlUnauthorizedAccount.selector,
+                unauthorized,
+                IALMProxy(proxy).CONTROLLER()
+            )
+        );
+        vm.prank(unauthorized);
+        IALMProxy(proxy).doCall(address(mapleLike), data);
+        assertEq(usd.balanceOf(proxy), NEW_DEPOSIT);
     }
 }
 
