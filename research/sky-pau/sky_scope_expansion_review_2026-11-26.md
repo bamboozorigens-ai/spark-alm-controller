@@ -84,3 +84,15 @@ Analisei os três alvos recém-adicionados: `StUsdsRateSetterDissBudSpell`, `StU
 - O motivo é que `StUsdsMom` autoriza chamadas via sua Authority (MCD_ADM); o spell precisa ser o endereço autorizado/hat. Os testes de integração upstream também exercitam esse requisito e esperam a reversão quando o spell não tem o hat.
 - Resultado: **3 aprovados, 0 falhos** em `test/audit/EmergencySpellPermissionlessScheduleFork.t.sol`. Nenhuma transação foi enviada à rede.
 - Conclusão: a ausência de ACL local em `schedule()` não forneceu bypass no deployment testado; o controle efetivo está no Mom. Usar um spell que foi legitimamente escolhido pela governança não é um ataque permissionless independente.
+
+
+## SwapAsset — tentativa de contraparte desconhecida (2026-11-27)
+
+Como `SwapAssetFacet.completeSwap` deliberadamente não exige `ALLOCATOR_ROLE`, testei essa entrada como rota de retirada econômica por um contrato intermediário. O teste local está em [SwapAssetCompleteAuthorizationFork.t.sol](https://github.com/bamboozorigens-ai/spark-alm-controller/blob/sky-audit-2026-11-26/research/sky-pau/SwapAssetCompleteAuthorizationFork.t.sol).
+
+- Fork Ethereum no bloco 26502755: **3 aprovados, 0 falhos**.
+- Uma contraparte sem chave de rate limit configurada não conseguiu executar `completeSwap`; a chamada reverteu em `RateLimits/zero-maxAmount` e os saldos de USDS/USDT do proxy e do relay permaneceram iguais.
+- O relay também não conseguiu iniciar a negociação sem `ALLOCATOR_ROLE`, instalar uma chave ilimitada para seu próprio endereço nem consumir o rate limit diretamente (os papéis admin/controller bloquearam as tentativas).
+- O harness foi compatibilizado temporariamente e restaurado; não houve transação externa.
+
+Conclusão: o caminho sem `onlyRole` depende da chave de rate limit específica para o endereço chamador e não forneceu bypass para uma contraparte nova nos cenários testados. A revisão não demonstrou perda financeira explorável nesse caminho.
