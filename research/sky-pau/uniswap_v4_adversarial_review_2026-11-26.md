@@ -36,3 +36,16 @@ Para destravar a validação seletiva, ajustei temporariamente o harness para us
 - O bloco fixado originalmente (23470490) não está disponível no endpoint público utilizado, cujo histórico começa em 26492729. A suíte financeira completa permanece sem validação contra seu estado original.
 
 Conclusão atualizada: os testes de autorização e reentrância não encontraram bypass. O resultado não exclui outras falhas no facet; swaps de produção localizados em fork exigem fixtures recalculadas para o bloco selecionado, e devem comparar saldos/resultados reais em vez de eventos com quantias absolutas históricas.
+
+
+## Tentativas ampliadas de contorno de autorização (2026-11-27)
+
+Adicionei o teste reproduzível [UniswapV4AuthBoundaryFork.t.sol](https://github.com/bamboozorigens-ai/spark-alm-controller/blob/sky-audit-2026-11-26/research/sky-pau/UniswapV4AuthBoundaryFork.t.sol). O teste cria um relay malicioso dentro do processo local e tenta invocar as entradas do Controller como contrato intermediário, escalar papel, reconfigurar limites e contornar o Controller chamando diretamente o ALMProxy.
+
+- Resultado em fork Ethereum no bloco 26502755: **13 aprovados, 0 falhos**.
+- As quatro entradas financeiras (mint, increase, decrease, swap) reverteram para o relay sem `ALLOCATOR_ROLE`. O teste comparou o erro de autorização e verificou saldos USDC/USDT do proxy antes e depois.
+- Tentativas de obter `ALLOCATOR_ROLE`, obter `CONTROLLER` no ALMProxy, mudar admin de papel, zerar slippage, alterar tick limits, chamar `ALMProxy.doCall` para transferir USDC, usar `doDelegateCall` e `doCallWithValue` também falharam com os papéis esperados. Nenhum saldo foi transferido ao relay.
+- Os quatro testes herdados também confirmam bloqueio de reentrância e de chamador sem allocator.
+- O harness e as dependências foram compatibilizados apenas durante a execução e restaurados depois. A única mutação foi no estado temporário do fork criado pelo Foundry; não houve transação externa.
+
+Esta bateria não encontrou rota para obter privilégio ou retirar fundos neste Controller recém-deployado pelo harness. Ela valida especificamente as barreiras de chamada e não prova ausência de vulnerabilidades em outros facets, deployments ou combinações de estado.
