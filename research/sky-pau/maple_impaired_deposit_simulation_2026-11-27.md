@@ -53,6 +53,16 @@ Repeated deposits with total cohort amount `D_total` have the same simplified bo
 - The local test uses the actual PAU facet and controller/proxy test harness but substitutes a synthetic impaired vault. It validates PAU routing and arithmetic against that model; it does not validate Maple implementation semantics or a live deployment.
 - The bypass attempt in the fixture fails: the proxy rejects a direct unauthorized `doCall`, and zero configured deposit capacity blocks the allocator path. A separate privilege-escalation bug would be needed to turn this into an unprivileged theft path; none was demonstrated.
 
+## Public deployment and governance trail
+
+The public record points to Maple as a historical Grove/Spark route, while recent Diamond PAU onboarding materials identify other vaults. This narrows where to look but does not replace a direct state read at the current block:
+
+- Sky's August 13, 2026 executive proposal says the Grove ALM Maple syrupUSDC deposit rate limit would be reduced from 50 million with a 50 million/day slope to zero. This is an explicit mitigation decision for that legacy route.
+- Sky's July 16, 2026 executive proposal says the Grove ALM Proxy's syrupUSDC balance would be transferred to the Spark ALM Proxy for equivalent USDS. The proposal formula cited 85,943,747.637271 syrupUSDC, but this historical amount is not a present balance.
+- Sky's November 19, 2026 Osero/Base DPAU proposal enables ERC-4626 and lists an Osero x Gauntlet USDC Prime vault with a 15 million USDC deposit cap and 10 million/day slope. It does not list Maple for that newly described Base configuration. The proposal is not, by itself, proof of the final on-chain state or of every other controller configuration.
+
+These documents do not establish a currently exploitable Maple route in the Diamond PAU. They also do not show whether an allocator path on another controller could reach an impaired Maple pool. Exact live state remains unverified.
+
 ## Live exposure and bounty eligibility
 
 Current production `unrealizedLosses()`, exact PAU deployment, Maple pool address, allocator authorization, rate-limit values, exchange-rate guard, and deposited amount were not verified on-chain. Historical governance proposals and older controller settings are not proof of the current Diamond PAU configuration. Consequently this report assigns **no confirmed live dollar exposure**.
@@ -75,3 +85,6 @@ The public Sky Immunefi page currently lists $10,000,000 as the maximum bounty a
 - Sky Immunefi information: https://immunefi.com/bug-bounty/sky/information/
 - Sky Immunefi scope: https://immunefi.com/bug-bounty/sky/scope/
 - Sky Immunefi resources / asset pointers: https://immunefi.com/bug-bounty/sky/resources/
+- Sky August 13, 2026 proposal (Grove Maple deposit limit to zero): https://vote.sky.money/executive/template-executive-vote-initialize-sbe-beam-monthly-settlement-cycle-for-july-2026-lssky-sky-rewards-normalization-increase-buybacks-and-reactivate-lssky-usds-farm-adjust-grove-and-osero-dc-iam-parameters-rename-osero-chainlog-keys-update-safe-harbor-agreement-prime-agent-proxy-spells-august-13-2026
+- Sky July 16, 2026 proposal (historic Grove-to-Spark syrupUSDC transfer and Osero DPAU setup): https://vote.sky.money/executive/template-executive-vote-monthly-settlement-cycle-for-june-2026-lssky-sky-rewards-normalization-complete-rwa001-a-offboarding-add-emergency-spells-to-the-chainlog-whitelist-osero-almproxy-adjust-vault-parameters-update-safe-harbor-agreement-prime-agent-proxy-spells-july-16-2026
+- Sky November 19, 2026 proposal (Osero/Base DPAU and Gauntlet USDC vault): https://vote.sky.money/executive/template-executive-vote-monthly-settlement-cycle-for-october-2026-treasury-management-function-execution-core-vault-debt-ceiling-reductions-legacy-usdc-psm-offboarding-test-halo-initialization-osero-base-dpau-activation-safe-harbor-agreement-update-prime-agent-proxy-spells-november-19-2026
