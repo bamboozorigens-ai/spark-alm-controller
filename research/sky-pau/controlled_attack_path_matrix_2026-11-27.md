@@ -2,7 +2,7 @@
 
 ## Outcome
 
-Across six controlled Foundry suites, **16 tests passed**. One positive economic-loss scenario was reproduced: a configured, allocator-authorized peer can cause the local receiving PAU proxy to overpay when its incoming token charges a transfer fee. The peer's fee recipient captures the difference in the synthetic-token scenario.
+Across seven controlled Foundry suites, **29 tests passed**. One positive economic-loss scenario was reproduced: a configured, allocator-authorized peer can cause the local receiving PAU proxy to overpay when its incoming token charges a transfer fee. The peer's fee recipient captures the difference in the synthetic-token scenario.
 
 No permissionless external attacker path to profit or drain Sky/customer funds was established. All fork state changes were local Forge state; no transaction was broadcast. Tests that impersonate admins, allocators, or protocol addresses do so only with `vm.prank` inside the local fork.
 
@@ -16,8 +16,9 @@ No permissionless external attacker path to profit or drain Sky/customer funds w
 | Arbitrum topology | 2 passed | Two controllers share one ALM proxy; fork read shows a single allocator-role member, the AdministeredAgent. This is topology evidence, not proof of a bypass. |
 | Emergency spells | 3 passed | Outsider scheduling attempts for three emergency spells revert as unauthorized. |
 | Sibling-controller reentrancy | 3 passed | Same-controller reentry is blocked; cross-controller callback succeeds only when callback has allocator role on the sibling controller; unprivileged callback fails. |
+| Uniswap V4 authorization | 13 passed | Outsider relay cannot reach allocator actions, move proxy assets, invoke proxy delegate/value calls, self-promote, or change facet/role configuration; direct reentry checks also reverted. |
 
-The SwapAsset suite used a local mainnet fork at block `26,493,050`; the weETH and emergency-spell suites used the public endpoint's current fork state during execution; the Arbitrum suite was read-only. The source checkout's older fork test base needed temporary compatibility edits for the SwapAsset suite and was restored after the run. The controller/facet under test was deployed locally; the fork supplied external chain dependencies. This is not verification that the live deployment has the tested peer/token/limits.
+The SwapAsset suite used a local mainnet fork at block `26,493,050`; Uniswap V4 used the public endpoint's latest fork block `26,503,186`; the weETH and emergency-spell suites used the public endpoint's current fork state during execution; the Arbitrum suite was read-only. The source checkout's older fork test base needed temporary compatibility edits for the SwapAsset suite and was restored after the run. The controller/facet under test was deployed locally; the fork supplied external chain dependencies. This is not verification that the live deployment has the tested peer/token/limits.
 
 ## Deployment status of SwapAsset
 
