@@ -96,3 +96,15 @@ Como `SwapAssetFacet.completeSwap` deliberadamente não exige `ALLOCATOR_ROLE`, 
 - O harness foi compatibilizado temporariamente e restaurado; não houve transação externa.
 
 Conclusão: o caminho sem `onlyRole` depende da chave de rate limit específica para o endereço chamador e não forneceu bypass para uma contraparte nova nos cenários testados. A revisão não demonstrou perda financeira explorável nesse caminho.
+
+
+## SwapAsset — diferença econômica com token de taxa (27-11-2026)
+
+A bateria agora inclui um cenário econômico em fork com um token ERC-20 local que envia 10% de cada transferência a um destinatário controlado pelo peer. O teste chama o caminho completo `initiateSwap → completeSwap`, com rate limits explícitos para o par e contraparte, e mede os saldos após a execução.
+
+- Teste: [SwapAssetCompleteAuthorizationFork.t.sol](https://github.com/bamboozorigens-ai/spark-alm-controller/blob/sky-audit-2026-11-26/research/sky-pau/SwapAssetCompleteAuthorizationFork.t.sol); resultado total: **4 aprovados, 0 falhos**. O caso econômico em si aprovou as asserções de perda; as demais chamadas sem papel/chave foram bloqueadas.
+- Com 100 USDS de saída e um token de entrada tributado 10%, o proxy local recebeu 90 tokens, entregou 100 USDS e o beneficiário do peer recebeu 10 tokens de taxa. Sob a premissa de paridade 1:1 que o facet usa pela diferença de decimais, isso equivale a déficit de 10 USDS por 100 USDS negociados. O rate limit aplicado era 100; o teste não extrapola esse limite.
+- O swap padrão USDS/USDT no teste upstream passou separadamente: **1 aprovado, 0 falhos**.
+- **Pré-condições importantes:** o peer precisa ter `ALLOCATOR_ROLE` e rate limit de iniciativa no próprio Controller; além disso, a vítima precisa ter um rate limit completo ativo para o proxy daquele peer e esse token/par. O teste cria uma token de taxa e essas configurações dentro do fork. Não demonstra saque permissionless, não confirma que tal token/par esteja ativo em deployment real e não prova impacto crítico.
+- A causa é que `completeSwap` usa conversão nominal por decimais e não mede a variação efetiva do saldo recebido antes de pagar o outro ativo. Correção candidata: medir o saldo de `assetIn` do proxy antes/depois de `transferFrom` e reverter se a diferença não for exatamente `amountIn`; restringir os tokens aceitos também reduz o risco.
+- Verificação de escopo: a consulta ao commit de `PAUFactory.sol` listado no bounty (`cbf71b2...`) não encontrou esse caminho de arquivo `src/facets/swap-asset/SwapAssetFacet.sol`; a reprodução foi contra o checkout local posterior `dev`. Portanto, isto é um **lead condicional de código posterior**, não um achado bounty confirmado. Para submissão seria necessário provar que esta versão do facet, um par com token sujeito a taxa e limites para um peer estão presentes no deployment atual elegível.
