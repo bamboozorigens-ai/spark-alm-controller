@@ -19,6 +19,10 @@ No permissionless external attacker path to profit or drain Sky/customer funds w
 
 The SwapAsset suite used a local mainnet fork at block `26,493,050`; the weETH and emergency-spell suites used the public endpoint's current fork state during execution; the Arbitrum suite was read-only. The source checkout's older fork test base needed temporary compatibility edits for the SwapAsset suite and was restored after the run. The controller/facet under test was deployed locally; the fork supplied external chain dependencies. This is not verification that the live deployment has the tested peer/token/limits.
 
+## Deployment status of SwapAsset
+
+Sky's November 23 Atlas edit describes adding Swap Asset Facet functions to Diamond PAU documentation **ahead of approval on the Beacon in a future Executive Vote**, and adding the Spark Diamond PAU to the Ethereum PAS **to be configured in a future Executive Vote**. This public governance trail suggests the tested Spark Diamond PAU route was still preparatory in that proposal; it does not establish the state of every PAU or replace a current on-chain read.
+
 ## Only positive loss scenario
 
 In the fee-token test, the local victim proxy paid 100 USDS and received 90 tokens; the synthetic token credited the other 10 tokens to the configured peer's fee recipient. At the test's assumed 1:1 value, the shortfall and peer-side capture were 10 USDS-equivalent.
