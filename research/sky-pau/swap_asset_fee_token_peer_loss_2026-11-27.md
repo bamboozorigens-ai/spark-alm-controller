@@ -20,6 +20,8 @@ Result: **4 passed, 0 failed** on local fork block `26,493,050`.
 
 The checkout's legacy `ForkTestBase.t.sol` does not compile with the installed Foundry/forge-std API without temporary test-harness compatibility edits. For this run only, the fork selection and duplicate `DssInstance` type imports were adapted in the test base, then the original file was restored. No production source or live state was modified. The selected public RPC can serve this historical block; other endpoints tried were unavailable or lacked the required historical state.
 
+The fork provides external Ethereum state for dependencies; the PAU controllers and facets exercised by `SwapAsset_TestBase` are deployed and configured by the test itself. Thus, this confirms behavior of the checked-out code under a fork-backed harness, not that a currently deployed Sky controller has this peer, token, or rate-limit configuration.
+
 The suite results:
 
 - `test_configuredPeerCanExploitFeeOnTransferInputAndOverdrawLocalProxy`: passed. The local victim controller pays 100 USDS and receives 90 fee tokens; the peer's fee recipient receives 10 tokens.
