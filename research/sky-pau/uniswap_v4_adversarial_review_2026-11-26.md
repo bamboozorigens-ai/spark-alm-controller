@@ -23,3 +23,16 @@ Não foi confirmado caminho de chamada permissionless que retire ativos ou conto
 ## Conclusão e próximo passo
 
 O caminho provável de maior valor não é alegar bypass nesta integração com a evidência atual. Para avançar com confiança, é necessário alinhar a versão de `forge-std`/dependências do checkout à versão esperada pelos testes de fork (ou preparar um harness isolado compatível) e então executar as funções de mint, increase, decrease e swap contra estado de fork, em modo somente local. Até essa validação, não há base para classificar impacto financeiro como crítico nem para submeter este vetor como vulnerabilidade.
+
+
+## Atualização — fork compatível e testes de barreira (2026-11-27)
+
+Para destravar a validação seletiva, ajustei temporariamente o harness para usar um endpoint RPC somente de leitura, importei o mesmo tipo `DssInstance` usado por `AllocatorInit` e selecionei o bloco de fork 26502755, já acessível no endpoint. Os três arquivos foram restaurados ao final; não houve escrita persistente no fork nem transação enviada à rede.
+
+- Testes de chamadas sem `ALLOCATOR_ROLE`: mint, increase, decrease e swap — **4 aprovados, 0 falhos**.
+- Testes de reentrância para mint, increase, decrease e swap — **4 aprovados, 0 falhos**.
+- Isso exercitou o Controller/facets recém-deployados pelo teste em fork e confirma que os chamadores sem papel não passam por essas quatro entradas nos cenários avaliados.
+- Tentei também os dois testes de swap funcional. Eles não são válidos como oráculo nesse bloco posterior: um falhou porque o valor exato esperado no evento corresponde ao estado antigo do pool; o outro porque o mínimo de saída pré-calculado para o bloco antigo passou a ser baixo demais para a validação normalizada. Não interpreto esses resultados como bug do contrato nem como evidência de perda.
+- O bloco fixado originalmente (23470490) não está disponível no endpoint público utilizado, cujo histórico começa em 26492729. A suíte financeira completa permanece sem validação contra seu estado original.
+
+Conclusão atualizada: os testes de autorização e reentrância não encontraram bypass. O resultado não exclui outras falhas no facet; swaps de produção localizados em fork exigem fixtures recalculadas para o bloco selecionado, e devem comparar saldos/resultados reais em vez de eventos com quantias absolutas históricas.
